@@ -1,0 +1,65 @@
+{
+    "indexes": [
+      {
+        "collectionGroup": "reminders",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "user_id",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "created_at",
+            "order": "DESCENDING"
+          }
+        ]
+      },
+      {
+        "collectionGroup": "medicines",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "user_id",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "name",
+            "order": "ASCENDING"
+          }
+        ]
+      },
+      {
+        "collectionGroup": "medicine_history",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "user_id",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "date",
+            "order": "DESCENDING"
+          },
+          {
+            "fieldPath": "scheduled_time",
+            "order": "DESCENDING"
+          }
+        ]
+      },
+      {
+        "collectionGroup": "medicine_history",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "user_id",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "status",
+            "order": "ASCENDING"
+          }
+        ]
+      }
+    ],
+    "fieldOverrides": []
+  }

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../database/database_helper_firebase.dart';
+import '../models/medicine.dart';
+import '../database/auth_service.dart';
 
 class MedicineHome extends StatefulWidget {
   const MedicineHome({super.key});
@@ -9,24 +12,57 @@ class MedicineHome extends StatefulWidget {
 
 class _MedicineHomeState extends State<MedicineHome> {
   final _searchController = TextEditingController();
-  List<Map<String, String>> _medicines = [
-    {'name': 'Paracetamol', 'desc': 'Giảm đau, hạ sốt'},
-    {'name': 'Vitamin C', 'desc': 'Tăng cường sức đề kháng'},
-    {'name': 'Amoxicillin', 'desc': 'Kháng sinh'},
-  ];
-
-  List<Map<String, String>> _filteredMedicines = [];
+  List<Medicine> _medicines = [];
+  List<Medicine> _filteredMedicines = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredMedicines = _medicines;
+    _loadMedicines();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMedicines() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Lấy userId từ AuthService
+      final userId = await AuthService.instance.getUserId();
+      
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng');
+      }
+
+      final medicines = await DatabaseHelper.instance.getMedicines(userId);
+      
+      if (mounted) {
+        setState(() {
+          _medicines = medicines;
+          _filteredMedicines = medicines;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải dữ liệu: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _searchMedicine(String query) {
@@ -37,7 +73,7 @@ class _MedicineHomeState extends State<MedicineHome> {
         _filteredMedicines = _medicines
             .where(
               (medicine) =>
-                  medicine['name']!.toLowerCase().contains(query.toLowerCase()),
+                  medicine.name.toLowerCase().contains(query.toLowerCase()),
             )
             .toList();
       }
@@ -116,7 +152,7 @@ class _MedicineHomeState extends State<MedicineHome> {
                   onChanged: _searchMedicine,
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
-                    hintText: '',
+                    hintText: 'Tìm kiếm thuốc...',
                     hintStyle: TextStyle(color: Colors.white70),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
@@ -137,113 +173,168 @@ class _MedicineHomeState extends State<MedicineHome> {
 
             // Medicine list
             Expanded(
-              child: _filteredMedicines.isEmpty
+              child: _isLoading
                   ? const Center(
-                      child: Text(
-                        'Không tìm thấy thuốc',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Color(0xFF5F9F7A),
-                        ),
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF5F9F7A),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _filteredMedicines.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 15),
-                          child: Row(
+                  : _filteredMedicines.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    Navigator.pushNamed(
-                                      context,
-                                      '/medicine_info',
-                                      arguments: _filteredMedicines[index],
-                                    );
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 16,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF5F9F7A),
-                                      borderRadius: BorderRadius.circular(30),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.2),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Text(
-                                      _filteredMedicines[index]['name']!,
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              Icon(
+                                Icons.medical_services_outlined,
+                                size: 80,
+                                color: Colors.grey.shade400,
                               ),
-                              const SizedBox(width: 15),
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.pushNamed(
-                                    context,
-                                    '/medicine_edit',
-                                    arguments: {
-                                      'index': index,
-                                      'medicine': _filteredMedicines[index],
-                                    },
-                                  );
-                                },
-                                child: Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: const Color(0xFF5F9F7A),
-                                      width: 3,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.1),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.edit,
-                                    color: Color(0xFF5F9F7A),
-                                    size: 24,
-                                  ),
+                              const SizedBox(height: 20),
+                              Text(
+                                _searchController.text.isEmpty
+                                    ? 'Chưa có thuốc nào'
+                                    : 'Không tìm thấy thuốc',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey.shade600,
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      },
-                    ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadMedicines,
+                          color: const Color(0xFF5F9F7A),
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _filteredMedicines.length,
+                            itemBuilder: (context, index) {
+                              final medicine = _filteredMedicines[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 15),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () async {
+                                          // Chờ kết quả từ màn hình info
+                                          final result = await Navigator.pushNamed(
+                                            context,
+                                            '/medicine_info',
+                                            arguments: medicine,
+                                          );
+                                          
+                                          // Reload nếu có thay đổi
+                                          if (result == true) {
+                                            _loadMedicines();
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 16,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF5F9F7A),
+                                            borderRadius:
+                                                BorderRadius.circular(30),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.2),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 3),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                medicine.name,
+                                                style: const TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              if (medicine.description != null &&
+                                                  medicine
+                                                      .description!.isNotEmpty)
+                                                Text(
+                                                  medicine.description!,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 15),
+                                    GestureDetector(
+                                      onTap: () async {
+                                        // Chờ kết quả trả về từ màn hình edit
+                                        final result = await Navigator.pushNamed(
+                                          context,
+                                          '/medicine_edit',
+                                          arguments: medicine,
+                                        );
+                                        
+                                        // Nếu edit hoặc xóa thành công, reload danh sách
+                                        if (result == true) {
+                                          _loadMedicines();
+                                        }
+                                      },
+                                      child: Container(
+                                        width: 50,
+                                        height: 50,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: const Color(0xFF5F9F7A),
+                                            width: 3,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color:
+                                                  Colors.black.withOpacity(0.1),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit,
+                                          color: Color(0xFF5F9F7A),
+                                          size: 24,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
             ),
 
             // Bottom decoration
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
-
               child: Opacity(
                 opacity: 0.3,
-                child: Image.asset(
-                  'assets/images/Them_Thuoc.png',
-                  width: 241.55,
+                child: Icon(
+                  Icons.local_florist,
+                  size: 100,
+                  color: Colors.green.shade300,
                 ),
               ),
             ),
@@ -251,8 +342,11 @@ class _MedicineHomeState extends State<MedicineHome> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/add_medicine');
+        onPressed: () async {
+          final result = await Navigator.pushNamed(context, '/add_medicine');
+          if (result == true) {
+            _loadMedicines(); // Refresh list after adding
+          }
         },
         backgroundColor: const Color(0xFF5F9F7A),
         child: const Icon(

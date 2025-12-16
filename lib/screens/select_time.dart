@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../database/database_helper_firebase.dart';
+import '../models/reminder.dart';
+import '../database/auth_service.dart';
+import '../utils/time_format_helper.dart';
 
 class SelectTime extends StatefulWidget {
   const SelectTime({super.key});
@@ -8,13 +12,13 @@ class SelectTime extends StatefulWidget {
 }
 
 class _SelectTimeScreenState extends State<SelectTime> {
-  List<String> _times = ['8:00', '12:00', '18:00'];
+  List<String> _times = ['08:00', '12:00', '18:00'];
   Map<String, dynamic>? _reminderData;
+  bool _isLoading = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Get reminder data from previous screen
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
@@ -39,13 +43,20 @@ class _SelectTimeScreenState extends State<SelectTime> {
 
   void _addNewTime() {
     setState(() {
-      _times.add('9:00');
+      _times.add('09:00');
     });
   }
 
   void _showTimePicker(int index) {
-    int selectedHour = int.parse(_times[index].split(':')[0]);
+    // Parse thời gian hiện tại (24h format)
+    int hour24 = int.parse(_times[index].split(':')[0]);
     int selectedMinute = int.parse(_times[index].split(':')[1]);
+    
+    // Xác định AM/PM
+    bool isPM = hour24 >= 12;
+    
+    // Chuyển sang giờ 0-11 cho wheel picker
+    int selectedHour = hour24 % 12; // 0-11
 
     showDialog(
       context: context,
@@ -59,7 +70,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
               ),
               child: Container(
                 padding: const EdgeInsets.all(20),
-                height: 300,
+                height: 450,
                 child: Column(
                   children: [
                     const Text(
@@ -71,35 +82,66 @@ class _SelectTimeScreenState extends State<SelectTime> {
                       ),
                     ),
                     const SizedBox(height: 20),
+                    
+                    // Display current selected time in AM/PM format
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 30,
+                        vertical: 15,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5F9F7A),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Text(
+                        _formatDisplayTime(selectedHour, selectedMinute, isPM),
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Time wheel selector - CHỈ 0-11 GIỜ
                     Expanded(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Hour selector
-                          SizedBox(
-                            width: 60,
+                          // Hour selector (00-11)
+                          Expanded(
                             child: ListWheelScrollView.useDelegate(
                               controller: FixedExtentScrollController(
                                 initialItem: selectedHour,
                               ),
-                              itemExtent: 40,
+                              itemExtent: 60,
+                              perspective: 0.003,
                               diameterRatio: 1.5,
                               physics: const FixedExtentScrollPhysics(),
+                              magnification: 1.2,
+                              useMagnifier: true,
                               onSelectedItemChanged: (value) {
                                 setDialogState(() {
-                                  selectedHour = value;
+                                  selectedHour = value; // 0-11
                                 });
                               },
                               childDelegate: ListWheelChildBuilderDelegate(
-                                childCount: 24,
+                                childCount: 12, // 0-11
                                 builder: (context, index) {
+                                  final isSelected = index == selectedHour;
                                   return Center(
                                     child: Text(
                                       index.toString().padLeft(2, '0'),
-                                      style: const TextStyle(
-                                        fontSize: 24,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
+                                      style: TextStyle(
+                                        fontSize: isSelected ? 32 : 24,
+                                        color: isSelected 
+                                            ? Colors.white 
+                                            : Colors.white.withOpacity(0.5),
+                                        fontWeight: isSelected 
+                                            ? FontWeight.bold 
+                                            : FontWeight.normal,
                                       ),
                                     ),
                                   );
@@ -107,24 +149,29 @@ class _SelectTimeScreenState extends State<SelectTime> {
                               ),
                             ),
                           ),
-                          const Text(
-                            ' : ',
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(
+                              ':',
+                              style: TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                           // Minute selector
-                          SizedBox(
-                            width: 60,
+                          Expanded(
                             child: ListWheelScrollView.useDelegate(
                               controller: FixedExtentScrollController(
                                 initialItem: selectedMinute,
                               ),
-                              itemExtent: 40,
+                              itemExtent: 60,
+                              perspective: 0.003,
                               diameterRatio: 1.5,
                               physics: const FixedExtentScrollPhysics(),
+                              magnification: 1.2,
+                              useMagnifier: true,
                               onSelectedItemChanged: (value) {
                                 setDialogState(() {
                                   selectedMinute = value;
@@ -133,13 +180,18 @@ class _SelectTimeScreenState extends State<SelectTime> {
                               childDelegate: ListWheelChildBuilderDelegate(
                                 childCount: 60,
                                 builder: (context, index) {
+                                  final isSelected = index == selectedMinute;
                                   return Center(
                                     child: Text(
                                       index.toString().padLeft(2, '0'),
-                                      style: const TextStyle(
-                                        fontSize: 24,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
+                                      style: TextStyle(
+                                        fontSize: isSelected ? 32 : 24,
+                                        color: isSelected 
+                                            ? Colors.white 
+                                            : Colors.white.withOpacity(0.5),
+                                        fontWeight: isSelected 
+                                            ? FontWeight.bold 
+                                            : FontWeight.normal,
                                       ),
                                     ),
                                   );
@@ -150,53 +202,116 @@ class _SelectTimeScreenState extends State<SelectTime> {
                         ],
                       ),
                     ),
+                    
                     const SizedBox(height: 20),
+                    
+                    // AM/PM toggle buttons
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        TextButton(
-                          onPressed: () {
-                            // Set to morning time (8:00)
-                            setState(() {
-                              _times[index] = '08:00';
-                            });
-                            Navigator.pop(context);
-                          },
-                          child: const Text(
-                            'Sáng',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: ElevatedButton(
+                              onPressed: () {
+                                setDialogState(() {
+                                  isPM = false;
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: !isPM 
+                                    ? const Color(0xFF2D5F3F) 
+                                    : Colors.white,
+                                foregroundColor: !isPM 
+                                    ? Colors.white 
+                                    : const Color(0xFF2D5F3F),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                              ),
+                              child: const Text(
+                                'AM',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        const Text(
-                          ':',
-                          style: TextStyle(
-                            fontSize: 24,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            // Set to afternoon time (14:00)
-                            setState(() {
-                              _times[index] = '14:00';
-                            });
-                            Navigator.pop(context);
-                          },
-                          child: const Text(
-                            'Chiều',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: ElevatedButton(
+                              onPressed: () {
+                                setDialogState(() {
+                                  isPM = true;
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isPM 
+                                    ? const Color(0xFF2D5F3F) 
+                                    : Colors.white,
+                                foregroundColor: isPM 
+                                    ? Colors.white 
+                                    : const Color(0xFF2D5F3F),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                              ),
+                              child: const Text(
+                                'PM',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ],
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Confirm button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // Chuyển đổi về 24h format để lưu
+                          int hour24;
+                          if (isPM) {
+                            // PM: 00 -> 12, 01 -> 13, ..., 11 -> 23
+                            hour24 = (selectedHour == 0) ? 12 : selectedHour + 12;
+                          } else {
+                            // AM: 00 -> 00, 01 -> 01, ..., 11 -> 11
+                            hour24 = selectedHour;
+                          }
+                          
+                          setState(() {
+                            _times[index] = '${hour24.toString().padLeft(2, '0')}:${selectedMinute.toString().padLeft(2, '0')}';
+                          });
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF5F9F7A),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                        ),
+                        child: const Text(
+                          'Xác nhận',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -205,17 +320,22 @@ class _SelectTimeScreenState extends State<SelectTime> {
           },
         );
       },
-    ).then((_) {
-      // Update time when dialog closes
-      setState(() {
-        _times[index] =
-            '${selectedHour.toString().padLeft(2, '0')}:${selectedMinute.toString().padLeft(2, '0')}';
-      });
-    });
+    );
   }
 
-  void _createReminder() {
-    // Validate
+  // Helper function để format thời gian hiển thị
+  String _formatDisplayTime(int hour, int minute, bool isPM) {
+    // hour là 0-11
+    int displayHour = hour;
+    if (displayHour == 0) {
+      displayHour = 12; // 00 -> 12 (cả AM và PM)
+    }
+    
+    String period = isPM ? 'PM' : 'AM';
+    return '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+  }
+
+  Future<void> _createReminder() async {
     if (_times.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -226,17 +346,78 @@ class _SelectTimeScreenState extends State<SelectTime> {
       return;
     }
 
-    // Create reminder and go back to home
-    Navigator.popUntil(context, ModalRoute.withName('/home'));
+    setState(() {
+      _isLoading = true;
+    });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Đã tạo nhắc nhở "${_reminderData?['name'] ?? 'thuốc'}" với ${_times.length} thời gian!',
+    try {
+      // Get user ID from AuthService
+      final userId = await AuthService.instance.getUserId();
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng');
+      }
+
+      // Get custom days list
+      List<int> customDays = [];
+      if (_reminderData?['selectedDays'] != null) {
+        final selectedDays = _reminderData!['selectedDays'] as List<bool>;
+        for (int i = 0; i < selectedDays.length; i++) {
+          if (selectedDays[i]) {
+            customDays.add(i);
+          }
+        }
+      }
+
+      // Create reminder object
+      final reminder = Reminder(
+        userId: userId,
+        medicineId: _reminderData?['medicineId'] as int?,
+        medicineName: _reminderData?['name'] ?? '',
+        description: _reminderData?['description'],
+        isRepeatEnabled: _reminderData?['isRepeatEnabled'] ?? false,
+        repeatMode: _reminderData?['repeatMode'] ?? 'Một lần',
+        customDays: customDays,
+        times: _times,
+        isEnabled: true,
+        createdAt: DateTime.now(),
+      );
+
+      // Save to database
+      await DatabaseHelper.instance.createReminder(reminder);
+
+      if (!mounted) return;
+
+      // Show success and go back to home
+      // Pop back to add_reminder, then pop again to home
+      Navigator.of(context).pop(); // Close select_time
+      Navigator.of(context).pop(); // Close add_reminder
+      
+      // Reload data will happen automatically in home.dart's .then()
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Đã tạo nhắc nhở "${_reminderData?['name'] ?? 'thuốc'}" với ${_times.length} thời gian!',
+          ),
+          backgroundColor: const Color(0xFF5F9F7A),
         ),
-        backgroundColor: const Color(0xFF5F9F7A),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi tạo nhắc nhở: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -320,7 +501,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
                               ),
                               child: Center(
                                 child: Text(
-                                  _times[index],
+                                  TimeFormatHelper.format24To12Hour(_times[index]),
                                   style: const TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.bold,
@@ -424,15 +605,17 @@ class _SelectTimeScreenState extends State<SelectTime> {
                 ],
               ),
               child: TextButton(
-                onPressed: _createReminder,
-                child: const Text(
-                  'Tạo',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
+                onPressed: _isLoading ? null : _createReminder,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'Tạo',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
