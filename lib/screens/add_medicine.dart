@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_text_field.dart';
+import '../database/database_helper_firebase.dart';
+import '../models/medicine.dart';
+import '../database/auth_service.dart'; // QUAN TRỌNG: Import AuthService
 
 class AddMedicine extends StatefulWidget {
   const AddMedicine({super.key});
@@ -14,6 +17,7 @@ class _AddMedicineState extends State<AddMedicine> {
   final _usageController = TextEditingController();
   DateTime _startDate = DateTime.now();
   DateTime _expiryDate = DateTime.now().add(const Duration(days: 365));
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -75,8 +79,9 @@ class _AddMedicineState extends State<AddMedicine> {
     }
   }
 
-  void _createMedicine() {
-    if (_nameController.text.isEmpty) {
+  Future<void> _createMedicine() async {
+    // Validate tên thuốc
+    if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng nhập tên thuốc'),
@@ -86,13 +91,81 @@ class _AddMedicineState extends State<AddMedicine> {
       return;
     }
 
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã thêm thuốc "${_nameController.text}"!'),
-        backgroundColor: const Color(0xFF5F9F7A),
-      ),
-    );
+    // Validate ngày hết hạn
+    if (_expiryDate.isBefore(_startDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hạn sử dụng phải sau ngày bắt đầu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // QUAN TRỌNG: Lấy userId thật từ AuthService
+      final userId = await AuthService.instance.getUserId();
+      
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng');
+      }
+
+      print('DEBUG: Creating medicine with userId: $userId'); // Debug log
+
+      // Tạo Medicine object với userId thật
+      final medicine = Medicine(
+        userId: userId, // Dùng userId thật, không phải hardcode
+        name: _nameController.text.trim(),
+        description: _descController.text.trim().isEmpty 
+            ? null 
+            : _descController.text.trim(),
+        usage: _usageController.text.trim().isEmpty 
+            ? null 
+            : _usageController.text.trim(),
+        startDate: _startDate,
+        expiryDate: _expiryDate,
+        createdAt: DateTime.now(),
+      );
+
+      // Lưu vào database
+      final id = await DatabaseHelper.instance.createMedicine(medicine);
+      
+      print('DEBUG: Medicine created with id: $id'); // Debug log
+
+      if (!mounted) return;
+
+      // QUAN TRỌNG: Trả về true để báo hiệu thêm thành công
+      Navigator.pop(context, true);
+      
+      // Thông báo thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã thêm thuốc "${_nameController.text}"!'),
+          backgroundColor: const Color(0xFF5F9F7A),
+        ),
+      );
+    } catch (e) {
+      print('DEBUG: Error creating medicine: $e'); // Debug log
+      
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -165,7 +238,10 @@ class _AddMedicineState extends State<AddMedicine> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    CustomTextField(controller: _nameController),
+                    CustomTextField(
+                      controller: _nameController,
+                      hintText: 'Nhập tên thuốc',
+                    ),
 
                     const SizedBox(height: 25),
 
@@ -179,7 +255,10 @@ class _AddMedicineState extends State<AddMedicine> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    CustomTextField(controller: _descController),
+                    CustomTextField(
+                      controller: _descController,
+                      hintText: 'Nhập mô tả',
+                    ),
 
                     const SizedBox(height: 25),
 
@@ -193,11 +272,14 @@ class _AddMedicineState extends State<AddMedicine> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    CustomTextField(controller: _usageController),
+                    CustomTextField(
+                      controller: _usageController,
+                      hintText: 'Nhập công dụng',
+                    ),
 
                     const SizedBox(height: 25),
 
-                    // Ngày bắt đầu (NEW!)
+                    // Ngày bắt đầu
                     GestureDetector(
                       onTap: () => _selectStartDate(context),
                       child: Container(
@@ -318,15 +400,17 @@ class _AddMedicineState extends State<AddMedicine> {
                 ],
               ),
               child: TextButton(
-                onPressed: _createMedicine,
-                child: const Text(
-                  'Tạo',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
+                onPressed: _isLoading ? null : _createMedicine,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'Tạo',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_text_field.dart';
+import '../database/auth_service.dart';
 
 class ChangePassword extends StatefulWidget {
   const ChangePassword({super.key});
@@ -12,6 +13,7 @@ class _ChangePasswordState extends State<ChangePassword> {
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -21,44 +23,67 @@ class _ChangePasswordState extends State<ChangePassword> {
     super.dispose();
   }
 
-  void _changePassword() {
+  Future<void> _changePassword() async {
     // Validate
     if (_oldPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng nhập mật khẩu cũ'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Vui lòng nhập mật khẩu cũ', isError: true);
       return;
     }
 
     if (_newPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng nhập mật khẩu mới'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Vui lòng nhập mật khẩu mới', isError: true);
+      return;
+    }
+
+    if (_newPasswordController.text.length < 6) {
+      _showSnackBar('Mật khẩu mới phải có ít nhất 6 ký tự', isError: true);
       return;
     }
 
     if (_newPasswordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mật khẩu mới không khớp'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Mật khẩu mới không khớp', isError: true);
       return;
     }
 
-    // Success
-    Navigator.pop(context);
+    if (_oldPasswordController.text == _newPasswordController.text) {
+      _showSnackBar('Mật khẩu mới phải khác mật khẩu cũ', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Gọi Firebase Auth để đổi mật khẩu
+      final result = await AuthService.instance.changePassword(
+        currentPassword: _oldPasswordController.text,
+        newPassword: _newPasswordController.text,
+      );
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      if (result['success']) {
+        // Thành công
+        Navigator.pop(context);
+        _showSnackBar(result['message'], isError: false);
+      } else {
+        // Thất bại
+        _showSnackBar(result['message'], isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackBar('Đã xảy ra lỗi: $e', isError: true);
+    }
+  }
+
+  void _showSnackBar(String message, {required bool isError}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đổi mật khẩu thành công!'),
-        backgroundColor: Color(0xFF5F9F7A),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : const Color(0xFF5F9F7A),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -161,6 +186,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                         CustomTextField(
                           controller: _oldPasswordController,
                           obscureText: true,
+                          hintText: 'Nhập mật khẩu hiện tại',
                         ),
 
                         const SizedBox(height: 25),
@@ -178,6 +204,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                         CustomTextField(
                           controller: _newPasswordController,
                           obscureText: true,
+                          hintText: 'Nhập mật khẩu mới (tối thiểu 6 ký tự)',
                         ),
 
                         const SizedBox(height: 25),
@@ -195,6 +222,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                         CustomTextField(
                           controller: _confirmPasswordController,
                           obscureText: true,
+                          hintText: 'Xác nhận mật khẩu mới',
                         ),
 
                         const SizedBox(height: 50),
@@ -214,7 +242,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                               ],
                             ),
                             child: ElevatedButton(
-                              onPressed: _changePassword,
+                              onPressed: _isLoading ? null : _changePassword,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF5F9F7A),
                                 foregroundColor: Colors.white,
@@ -222,14 +250,24 @@ class _ChangePasswordState extends State<ChangePassword> {
                                   borderRadius: BorderRadius.circular(30),
                                 ),
                                 elevation: 0,
+                                disabledBackgroundColor: Colors.grey,
                               ),
-                              child: const Text(
-                                'Xác nhận',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Xác nhận',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
                           ),
                         ),

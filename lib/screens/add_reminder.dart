@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_text_field.dart';
+import '../database/database_helper_firebase.dart';
+import '../models/reminder.dart';
 
 class AddReminder extends StatefulWidget {
   const AddReminder({super.key});
@@ -14,6 +16,7 @@ class _AddReminderScreenState extends State<AddReminder> {
   bool _isRepeatEnabled = false;
   String _repeatMode = 'Một lần';
   List<bool> _selectedDays = List.filled(7, false);
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -450,7 +453,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                           ],
                         ),
                         child: ElevatedButton(
-                          onPressed: _navigateToSelectTime,
+                          onPressed: _isLoading ? null : _navigateToSelectTime,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF5F9F7A),
                             foregroundColor: Colors.white,
@@ -459,7 +462,10 @@ class _AddReminderScreenState extends State<AddReminder> {
                             ),
                             elevation: 0,
                           ),
-                          child: const Icon(Icons.calendar_today, size: 28),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
+                              : const Icon(Icons.calendar_today, size: 28),
                         ),
                       ),
                     ),

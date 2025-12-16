@@ -1,19 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-
-class Reminder {
-  final String time;
-  final String medicineName;
-  bool isEnabled;
-  bool isSelected;
-
-  Reminder({
-    required this.time,
-    required this.medicineName,
-    this.isEnabled = true,
-    this.isSelected = false,
-  });
-}
+import '../database/database_helper_firebase.dart';
+import '../models/reminder.dart' as model;
+import 'dart:convert';
+import '../database/auth_service.dart';
+import '../utils/avatar_presets.dart';
+import '../utils/time_format_helper.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -27,16 +19,204 @@ class _HomeScreenState extends State<Home> {
   bool _isSelectionMode = false;
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
+  
+  List<model.Reminder> _reminders = [];
+  List<model.Reminder> _filteredReminders = [];
+  bool _isLoading = true;
+  final _searchController = TextEditingController();
 
-  List<Reminder> _reminders = [
-    Reminder(time: '8:00', medicineName: 'Vitamin C'),
-    Reminder(time: '18:00', medicineName: 'Paracetamol'),
-  ];
+  String? _avatarUrl;
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = 2; // Set default to center button
+    _selectedIndex = 2;
+    _loadReminders();
+    _loadUserAvatar();
+  }
+
+  Widget _buildAvatar() {
+    if (_avatarUrl == null || _avatarUrl!.isEmpty) {
+      return _buildDefaultAvatar();
+    }
+
+    // Check if it's a preset avatar
+    if (_avatarUrl!.startsWith('preset_')) {
+      return _buildPresetAvatar();
+    }
+
+    // Check if it's Base64 image
+    if (_avatarUrl!.startsWith('data:image')) {
+      return _buildBase64Avatar();
+    }
+
+    // Fallback: Custom uploaded image
+    if (_avatarUrl!.startsWith('http')) {
+      return _buildNetworkAvatar();
+    }
+
+    return _buildDefaultAvatar();
+  }
+
+  Widget _buildDefaultAvatar() {
+    return Container(
+      width: 45,
+      height: 45,
+      decoration: const BoxDecoration(
+        color: Color(0xFF5F9F7A),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.person_outline,
+        color: Colors.white,
+        size: 24,
+      ),
+    );
+  }
+
+  Widget _buildPresetAvatar() {
+    try {
+      final index = int.tryParse(_avatarUrl!.replaceFirst('preset_', ''));
+      if (index != null && index >= 0 && index < AvatarPresets.presets.length) {
+        return AvatarPresets.buildAvatar(
+          index: index,
+          size: 45,
+          backgroundColor: const Color(0xFF5F9F7A),
+        );
+      }
+    } catch (e) {
+      print('Error building preset avatar: $e');
+    }
+    return _buildDefaultAvatar();
+  }
+
+  Widget _buildBase64Avatar() {
+    try {
+      if (_avatarUrl!.contains(',')) {
+        final base64String = _avatarUrl!.split(',')[1];
+        final bytes = base64Decode(base64String);
+        return ClipOval(
+          child: Image.memory(
+            bytes,
+            width: 45,
+            height: 45,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              print('Error displaying base64 avatar: $error');
+              return _buildDefaultAvatar();
+            },
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error decoding base64 avatar: $e');
+    }
+    return _buildDefaultAvatar();
+  }
+
+  Widget _buildNetworkAvatar() {
+    return ClipOval(
+      child: Image.network(
+        _avatarUrl!,
+        width: 45,
+        height: 45,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            width: 45,
+            height: 45,
+            decoration: const BoxDecoration(
+              color: Color(0xFF5F9F7A),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          print('Error loading network avatar: $error');
+          return _buildDefaultAvatar();
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadReminders() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Get user ID from AuthService
+      final userId = await AuthService.instance.getUserId();
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng');
+      }
+      
+      final reminders = await DatabaseHelper.instance.getReminders(userId);
+      
+      // Filter reminders for selected date
+      final dayOfWeek = _selectedDate.weekday - 1; // 0 = Monday
+      final filteredByDate = reminders.where((reminder) {
+        return reminder.isActiveOnDay(dayOfWeek);
+      }).toList();
+
+      setState(() {
+        _reminders = reminders;
+        _filteredReminders = filteredByDate;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải dữ liệu: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadUserAvatar() async {
+    try {
+      final userInfo = await AuthService.instance.getUserInfo();
+      if (mounted && userInfo != null) {
+        setState(() {
+          _avatarUrl = userInfo['avatar_url'] as String?;
+        });
+      }
+    } catch (e) {
+      print('Error loading avatar: $e');
+      if (mounted) {
+        setState(() {
+          _avatarUrl = null; // Reset về default nếu có lỗi
+        });
+      }
+    }
+  }
+
+  void _filterRemindersByDate() {
+    final dayOfWeek = _selectedDate.weekday - 1;
+    setState(() {
+      _filteredReminders = _reminders.where((reminder) {
+        return reminder.isActiveOnDay(dayOfWeek);
+      }).toList();
+    });
   }
 
   void _onItemTapped(int index) {
@@ -44,19 +224,23 @@ class _HomeScreenState extends State<Home> {
       _selectedIndex = index;
     });
 
-    // Navigate to different screens
     if (index == 4) {
-      Navigator.pushNamed(context, '/settings').then((_) {
-        // Reset to current week when coming back
-        setState(() {
-          _currentDate = DateTime.now();
-          _selectedIndex = 2;
-        });
+      Navigator.pushNamed(context, '/settings').then((_) async {
+        await _loadUserAvatar(); // Load avatar TRƯỚC
+        if (mounted) {
+          setState(() {
+            _currentDate = DateTime.now();
+            _selectedDate = DateTime.now();
+            _selectedIndex = 2;
+          });
+          _loadReminders();
+        }
       });
     } else if (index == 1) {
       Navigator.pushNamed(context, '/medicine_home').then((_) {
         setState(() {
           _currentDate = DateTime.now();
+          _selectedDate = DateTime.now();
           _selectedIndex = 2;
         });
       });
@@ -64,6 +248,7 @@ class _HomeScreenState extends State<Home> {
       Navigator.pushNamed(context, '/progress').then((_) {
         setState(() {
           _currentDate = DateTime.now();
+          _selectedDate = DateTime.now();
           _selectedIndex = 2;
         });
       });
@@ -71,8 +256,10 @@ class _HomeScreenState extends State<Home> {
       Navigator.pushNamed(context, '/add_reminder').then((_) {
         setState(() {
           _currentDate = DateTime.now();
+          _selectedDate = DateTime.now();
           _selectedIndex = 2;
         });
+        _loadReminders();
       });
     }
   }
@@ -81,8 +268,10 @@ class _HomeScreenState extends State<Home> {
     setState(() {
       _isSelectionMode = !_isSelectionMode;
       if (!_isSelectionMode) {
-        for (var reminder in _reminders) {
-          reminder.isSelected = false;
+        // Clear all selections
+        for (var reminder in _filteredReminders) {
+          // Note: You'll need to add isSelected to Reminder model
+          // or track selections in a separate Set<int>
         }
       }
     });
@@ -91,17 +280,27 @@ class _HomeScreenState extends State<Home> {
   void _previousWeek() {
     setState(() {
       _currentDate = _currentDate.subtract(const Duration(days: 7));
+      _selectedDate = _currentDate;
+      _filterRemindersByDate();
     });
   }
 
   void _nextWeek() {
     setState(() {
       _currentDate = _currentDate.add(const Duration(days: 7));
+      _selectedDate = _currentDate;
+      _filterRemindersByDate();
+    });
+  }
+
+  void _onDateSelected(DateTime date) {
+    setState(() {
+      _selectedDate = date;
+      _filterRemindersByDate();
     });
   }
 
   List<DateTime> _getWeekDays() {
-    // Get Monday of current week
     final monday = _currentDate.subtract(
       Duration(days: _currentDate.weekday - 1),
     );
@@ -110,39 +309,22 @@ class _HomeScreenState extends State<Home> {
 
   String _getWeekdayName(int weekday) {
     switch (weekday) {
-      case 1:
-        return 'T2';
-      case 2:
-        return 'T3';
-      case 3:
-        return 'T4';
-      case 4:
-        return 'T5';
-      case 5:
-        return 'T6';
-      case 6:
-        return 'T7';
-      case 7:
-        return 'CN';
-      default:
-        return '';
+      case 1: return 'T2';
+      case 2: return 'T3';
+      case 3: return 'T4';
+      case 4: return 'T5';
+      case 5: return 'T6';
+      case 6: return 'T7';
+      case 7: return 'CN';
+      default: return '';
     }
   }
 
   String _getMonthYear() {
     final months = [
-      'Tháng 1',
-      'Tháng 2',
-      'Tháng 3',
-      'Tháng 4',
-      'Tháng 5',
-      'Tháng 6',
-      'Tháng 7',
-      'Tháng 8',
-      'Tháng 9',
-      'Tháng 10',
-      'Tháng 11',
-      'Tháng 12',
+      'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4',
+      'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8',
+      'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
     ];
     return '${months[_currentDate.month - 1]} ${_currentDate.year}';
   }
@@ -152,6 +334,12 @@ class _HomeScreenState extends State<Home> {
     return date.year == now.year &&
         date.month == now.month &&
         date.day == now.day;
+  }
+
+  bool _isSelectedDate(DateTime date) {
+    return date.year == _selectedDate.year &&
+        date.month == _selectedDate.month &&
+        date.day == _selectedDate.day;
   }
 
   void _showMonthCalendar() {
@@ -168,7 +356,6 @@ class _HomeScreenState extends State<Home> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Month/Year header
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -217,7 +404,6 @@ class _HomeScreenState extends State<Home> {
                   ],
                 ),
                 const SizedBox(height: 15),
-                // Weekday headers
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
@@ -239,15 +425,15 @@ class _HomeScreenState extends State<Home> {
                       .toList(),
                 ),
                 const SizedBox(height: 10),
-                // Calendar grid
                 ..._buildMonthGrid(),
                 const SizedBox(height: 15),
-                // Close button
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
                     setState(() {
                       _currentDate = DateTime.now();
+                      _selectedDate = DateTime.now();
+                      _filterRemindersByDate();
                     });
                   },
                   style: ElevatedButton.styleFrom(
@@ -281,18 +467,16 @@ class _HomeScreenState extends State<Home> {
       _currentDate.month + 1,
       0,
     );
-    final startingWeekday = firstDayOfMonth.weekday; // 1 = Monday
+    final startingWeekday = firstDayOfMonth.weekday;
     final daysInMonth = lastDayOfMonth.day;
 
     List<Widget> weeks = [];
     List<Widget> days = [];
 
-    // Add empty cells for days before month starts
     for (int i = 1; i < startingWeekday; i++) {
       days.add(const SizedBox(width: 40, height: 40));
     }
 
-    // Add days of month
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_currentDate.year, _currentDate.month, day);
       final isToday = _isToday(date);
@@ -303,6 +487,8 @@ class _HomeScreenState extends State<Home> {
             Navigator.pop(context);
             setState(() {
               _currentDate = date;
+              _selectedDate = date;
+              _filterRemindersByDate();
             });
           },
           child: Container(
@@ -325,7 +511,6 @@ class _HomeScreenState extends State<Home> {
         ),
       );
 
-      // Create new row after 7 days
       if (days.length == 7) {
         weeks.add(
           Padding(
@@ -340,7 +525,6 @@ class _HomeScreenState extends State<Home> {
       }
     }
 
-    // Add remaining days
     if (days.isNotEmpty) {
       while (days.length < 7) {
         days.add(const SizedBox(width: 40, height: 40));
@@ -363,23 +547,21 @@ class _HomeScreenState extends State<Home> {
     final now = DateTime.now();
     final currentTime = now.hour * 60 + now.minute;
 
-    // Sample notifications
     List<Map<String, dynamic>> upcoming = [];
     List<Map<String, dynamic>> overdue = [];
 
-    // Check reminders for upcoming (within 1 hour) and overdue
-    for (var reminder in _reminders) {
-      final timeParts = reminder.time.split(':');
-      final reminderMinutes =
-          int.parse(timeParts[0]) * 60 + int.parse(timeParts[1]);
-      final difference = reminderMinutes - currentTime;
+    for (var reminder in _filteredReminders) {
+      for (var time in reminder.times) {
+        final timeParts = time.split(':');
+        final reminderMinutes =
+            int.parse(timeParts[0]) * 60 + int.parse(timeParts[1]);
+        final difference = reminderMinutes - currentTime;
 
-      if (difference > 0 && difference <= 60) {
-        // Upcoming (within 1 hour)
-        upcoming.add({'name': reminder.medicineName, 'time': reminder.time});
-      } else if (difference < 0 && difference > -180) {
-        // Overdue (within last 3 hours)
-        overdue.add({'name': reminder.medicineName, 'time': reminder.time});
+        if (difference > 0 && difference <= 60) {
+          upcoming.add({'name': reminder.medicineName, 'time': TimeFormatHelper.format24To12Hour(time)});
+        } else if (difference < 0 && difference > -180) {
+          overdue.add({'name': reminder.medicineName, 'time': TimeFormatHelper.format24To12Hour(time)});
+        }
       }
     }
 
@@ -397,7 +579,6 @@ class _HomeScreenState extends State<Home> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header
                 const Text(
                   'Thông báo',
                   style: TextStyle(
@@ -407,14 +588,11 @@ class _HomeScreenState extends State<Home> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Content
                 Flexible(
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Upcoming notifications
                         if (upcoming.isNotEmpty) ...[
                           Row(
                             children: [
@@ -447,8 +625,6 @@ class _HomeScreenState extends State<Home> {
                           ),
                           const SizedBox(height: 15),
                         ],
-
-                        // Overdue notifications
                         if (overdue.isNotEmpty) ...[
                           Row(
                             children: [
@@ -480,8 +656,6 @@ class _HomeScreenState extends State<Home> {
                             ),
                           ),
                         ],
-
-                        // Empty state
                         if (upcoming.isEmpty && overdue.isEmpty)
                           Center(
                             child: Padding(
@@ -509,10 +683,7 @@ class _HomeScreenState extends State<Home> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
-                // Close button
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
@@ -573,11 +744,40 @@ class _HomeScreenState extends State<Home> {
     );
   }
 
-  void _deleteSelected() {
-    setState(() {
-      _reminders.removeWhere((reminder) => reminder.isSelected);
-      _isSelectionMode = false;
-    });
+  Future<void> _deleteSelected() async {
+    // Track selected reminder IDs
+    final selectedIds = <int>[];
+    // You'll need to implement selection tracking
+    
+    if (selectedIds.isEmpty) {
+      return;
+    }
+
+    try {
+      await DatabaseHelper.instance.deleteMultipleReminders(selectedIds);
+      setState(() {
+        _isSelectionMode = false;
+      });
+      _loadReminders();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xóa nhắc nhở đã chọn'),
+            backgroundColor: Color(0xFF5F9F7A),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _showDeleteConfirmation() {
@@ -641,26 +841,48 @@ class _HomeScreenState extends State<Home> {
     );
   }
 
+  Future<void> _toggleReminderEnabled(model.Reminder reminder) async {
+    try {
+      final updatedReminder = reminder.copyWith(
+        isEnabled: !reminder.isEnabled,
+      );
+      
+      await DatabaseHelper.instance.updateReminder(updatedReminder);
+      _loadReminders();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // Top bar
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  // Profile icon - navigate to User Info
                   GestureDetector(
-                    onTap: () {
-                      Navigator.pushNamed(context, '/user_info').then((_) {
+                    onTap: () async {
+                      await Navigator.pushNamed(context, '/user_info');
+                      // Load lại avatar ngay sau khi quay về
+                      await _loadUserAvatar();
+                      if (mounted) {
                         setState(() {
                           _currentDate = DateTime.now();
+                          _selectedDate = DateTime.now();
                           _selectedIndex = 2;
                         });
-                      });
+                      }
                     },
                     child: Container(
                       width: 45,
@@ -680,16 +902,10 @@ class _HomeScreenState extends State<Home> {
                           ),
                         ],
                       ),
-                      child: const Icon(
-                        Icons.person_outline,
-                        color: Color(0xFF2D5F3F),
-                        size: 24,
-                      ),
+                      child: ClipOval(child: _buildAvatar()),
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Search bar
                   Expanded(
                     child: Container(
                       height: 45,
@@ -704,9 +920,12 @@ class _HomeScreenState extends State<Home> {
                           ),
                         ],
                       ),
-                      child: const TextField(
-                        decoration: InputDecoration(
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
                           hintText: '',
+                          hintStyle: TextStyle(color: Colors.white70),
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: 20,
@@ -722,8 +941,6 @@ class _HomeScreenState extends State<Home> {
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Notification icon - show notifications popup
                   GestureDetector(
                     onTap: _showNotifications,
                     child: Container(
@@ -751,7 +968,6 @@ class _HomeScreenState extends State<Home> {
               ),
             ),
 
-            // Calendar widget
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Container(
@@ -770,7 +986,6 @@ class _HomeScreenState extends State<Home> {
                 ),
                 child: Column(
                   children: [
-                    // Month/Year with navigation arrows
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -814,14 +1029,17 @@ class _HomeScreenState extends State<Home> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // Week days row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: _getWeekDays().map((date) {
-                        return _buildDayColumn(
-                          _getWeekdayName(date.weekday),
-                          date.day.toString(),
-                          _isToday(date),
+                        return GestureDetector(
+                          onTap: () => _onDateSelected(date),
+                          child: _buildDayColumn(
+                            _getWeekdayName(date.weekday),
+                            date.day.toString(),
+                            _isToday(date),
+                            _isSelectedDate(date),
+                          ),
                         );
                       }).toList(),
                     ),
@@ -831,151 +1049,137 @@ class _HomeScreenState extends State<Home> {
             ),
 
             Expanded(
-              child: _reminders.isEmpty
-                  ? Center(
-                      child: CustomPaint(
-                        size: const Size(220, 280),
-                        painter: CloverPainter(),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF5F9F7A),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 10,
-                      ),
-                      itemCount: _reminders.length,
-                      itemBuilder: (context, index) {
-                        return GestureDetector(
-                          onLongPress: () {
-                            if (!_isSelectionMode) {
-                              _toggleSelectionMode();
-                              setState(() {
-                                _reminders[index].isSelected = true;
-                              });
-                            }
-                          },
-                          onTap: () {
-                            if (_isSelectionMode) {
-                              setState(() {
-                                _reminders[index].isSelected =
-                                    !_reminders[index].isSelected;
-                              });
-                            }
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 15),
+                  : _filteredReminders.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CustomPaint(
+                                size: const Size(220, 280),
+                                painter: CloverPainter(),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Không có nhắc nhở nào',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Color(0xFF2D5F3F),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadReminders,
+                          color: const Color(0xFF5F9F7A),
+                          child: ListView.builder(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 20,
-                              vertical: 15,
+                              vertical: 10,
                             ),
-                            decoration: BoxDecoration(
-                              color: _reminders[index].isSelected
-                                  ? const Color(0xFF7FB896)
-                                  : const Color(0xFFB8E6C9),
-                              borderRadius: BorderRadius.circular(25),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 3),
+                            itemCount: _filteredReminders.length,
+                            itemBuilder: (context, index) {
+                              final reminder = _filteredReminders[index];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 15),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 15,
                                 ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                if (_isSelectionMode)
-                                  Container(
-                                    width: 24,
-                                    height: 24,
-                                    margin: const EdgeInsets.only(right: 15),
-                                    decoration: BoxDecoration(
-                                      color: _reminders[index].isSelected
-                                          ? const Color(0xFF2D5F3F)
-                                          : Colors.white,
-                                      border: Border.all(
-                                        color: const Color(0xFF2D5F3F),
-                                        width: 2,
-                                      ),
-                                      borderRadius: BorderRadius.circular(5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFB8E6C9),
+                                  borderRadius: BorderRadius.circular(25),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 3),
                                     ),
-                                    child: _reminders[index].isSelected
-                                        ? const Icon(
-                                            Icons.check,
-                                            color: Colors.white,
-                                            size: 18,
-                                          )
-                                        : null,
-                                  ),
-                                CustomPaint(
-                                  size: const Size(60, 60),
-                                  painter: SmallCloverPainter(),
+                                  ],
                                 ),
-                                const SizedBox(width: 15),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _reminders[index].time,
-                                        style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF2D5F3F),
-                                        ),
+                                child: Row(
+                                  children: [
+                                    CustomPaint(
+                                      size: const Size(60, 60),
+                                      painter: SmallCloverPainter(),
+                                    ),
+                                    const SizedBox(width: 15),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            reminder.medicineName,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF2D5F3F),
+                                            ),
+                                          ),
+                                          Text(
+                                            TimeFormatHelper.formatList24To12Hour(reminder.times).join(', '),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              color: Color(0xFF2D5F3F),
+                                            ),
+                                          ),
+                                          if (reminder.description != null &&
+                                              reminder.description!.isNotEmpty)
+                                            Text(
+                                              reminder.description!,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade700,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                        ],
                                       ),
-                                      Text(
-                                        _reminders[index].medicineName,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          color: Color(0xFF2D5F3F),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => _toggleReminderEnabled(reminder),
+                                      child: Container(
+                                        width: 60,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: reminder.isEnabled
+                                              ? const Color(0xFF5F9F7A)
+                                              : const Color(0xFF7FB896),
+                                          borderRadius: BorderRadius.circular(20),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (!_isSelectionMode)
-                                  GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _reminders[index].isEnabled =
-                                            !_reminders[index].isEnabled;
-                                      });
-                                    },
-                                    child: Container(
-                                      width: 60,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: _reminders[index].isEnabled
-                                            ? const Color(0xFF5F9F7A)
-                                            : const Color(0xFF7FB896),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: AnimatedAlign(
-                                        duration: const Duration(
-                                          milliseconds: 200,
-                                        ),
-                                        alignment: _reminders[index].isEnabled
-                                            ? Alignment.centerRight
-                                            : Alignment.centerLeft,
-                                        child: Container(
-                                          width: 28,
-                                          height: 28,
-                                          margin: const EdgeInsets.all(2),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.white,
-                                            shape: BoxShape.circle,
+                                        child: AnimatedAlign(
+                                          duration: const Duration(
+                                            milliseconds: 200,
+                                          ),
+                                          alignment: reminder.isEnabled
+                                              ? Alignment.centerRight
+                                              : Alignment.centerLeft,
+                                          child: Container(
+                                            width: 28,
+                                            height: 28,
+                                            margin: const EdgeInsets.all(2),
+                                            decoration: const BoxDecoration(
+                                              color: Colors.white,
+                                              shape: BoxShape.circle,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
+                        ),
             ),
 
             if (_isSelectionMode)
@@ -1046,7 +1250,7 @@ class _HomeScreenState extends State<Home> {
     );
   }
 
-  Widget _buildDayColumn(String day, String date, bool isToday) {
+  Widget _buildDayColumn(String day, String date, bool isToday, bool isSelected) {
     return Column(
       children: [
         Text(
@@ -1062,7 +1266,11 @@ class _HomeScreenState extends State<Home> {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: isToday ? const Color(0xFF2D5F3F) : Colors.transparent,
+            color: isToday
+                ? const Color(0xFF2D5F3F)
+                : isSelected
+                    ? const Color(0xFF5F9F7A)
+                    : Colors.transparent,
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
@@ -1071,7 +1279,9 @@ class _HomeScreenState extends State<Home> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: isToday ? Colors.white : const Color(0xFF2D5F3F),
+              color: (isToday || isSelected)
+                  ? Colors.white
+                  : const Color(0xFF2D5F3F),
             ),
           ),
         ),
@@ -1108,8 +1318,10 @@ class _HomeScreenState extends State<Home> {
         Navigator.pushNamed(context, '/add_reminder').then((_) {
           setState(() {
             _currentDate = DateTime.now();
+            _selectedDate = DateTime.now();
             _selectedIndex = 2;
           });
+          _loadReminders();
         });
       },
       child: Container(
@@ -1200,10 +1412,6 @@ class CloverPainter extends CustomPainter {
       Offset(centerX, size.height - 20),
       stemPaint,
     );
-
-    final facePaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = const Color(0xFF2D5F3F);
 
     canvas.drawLine(
       Offset(centerX - 20, centerY - 5),

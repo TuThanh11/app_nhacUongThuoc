@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_text_field.dart';
+import '../database/database_helper_firebase.dart';
+import '../models/medicine.dart';
+import '../database/auth_service.dart'; // Import AuthService
 
 class MedicineEdit extends StatefulWidget {
   const MedicineEdit({super.key});
@@ -13,18 +16,30 @@ class _MedicineEditState extends State<MedicineEdit> {
   final _descController = TextEditingController();
   final _usageController = TextEditingController();
   DateTime _startDate = DateTime.now();
-  DateTime _selectedDate = DateTime.now().add(const Duration(days: 365));
+  DateTime _expiryDate = DateTime.now().add(const Duration(days: 365));
+  
+  Medicine? _medicine;
+  bool _isLoading = false;
+  bool _isInitialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    if (args != null && args['medicine'] != null) {
-      final medicine = args['medicine'] as Map<String, String>;
-      _nameController.text = medicine['name'] ?? '';
-      _descController.text = medicine['desc'] ?? '';
-      _usageController.text = 'Sử dụng để giảm đau và hạ sốt';
+    
+    // Chỉ load dữ liệu một lần
+    if (!_isInitialized) {
+      final medicine = ModalRoute.of(context)?.settings.arguments as Medicine?;
+      
+      if (medicine != null) {
+        _medicine = medicine;
+        _nameController.text = medicine.name;
+        _descController.text = medicine.description ?? '';
+        _usageController.text = medicine.usage ?? '';
+        _startDate = medicine.startDate;
+        _expiryDate = medicine.expiryDate;
+      }
+      
+      _isInitialized = true;
     }
   }
 
@@ -62,10 +77,10 @@ class _MedicineEditState extends State<MedicineEdit> {
     }
   }
 
-  Future<void> _selectDate(BuildContext context) async {
+  Future<void> _selectExpiryDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
+      initialDate: _expiryDate,
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
       builder: (context, child) {
@@ -81,15 +96,16 @@ class _MedicineEditState extends State<MedicineEdit> {
         );
       },
     );
-    if (picked != null && picked != _selectedDate) {
+    if (picked != null && picked != _expiryDate) {
       setState(() {
-        _selectedDate = picked;
+        _expiryDate = picked;
       });
     }
   }
 
-  void _saveChanges() {
-    if (_nameController.text.isEmpty) {
+  Future<void> _saveChanges() async {
+    // Validate
+    if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng nhập tên thuốc'),
@@ -99,13 +115,133 @@ class _MedicineEditState extends State<MedicineEdit> {
       return;
     }
 
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đã lưu thay đổi!'),
-        backgroundColor: Color(0xFF5F9F7A),
+    if (_medicine == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tìm thấy thông tin thuốc'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Check expiry date
+    if (_expiryDate.isBefore(_startDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hạn sử dụng phải sau ngày bắt đầu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Get user ID
+      final userId = await AuthService.instance.getUserId();
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng');
+      }
+
+      // Create updated medicine object
+      final updatedMedicine = Medicine(
+        id: _medicine!.id,
+        userId: userId,
+        name: _nameController.text.trim(),
+        description: _descController.text.trim().isEmpty 
+            ? null 
+            : _descController.text.trim(),
+        usage: _usageController.text.trim().isEmpty 
+            ? null 
+            : _usageController.text.trim(),
+        startDate: _startDate,
+        expiryDate: _expiryDate,
+        createdAt: _medicine!.createdAt,
+      );
+
+      // Update in database
+      await DatabaseHelper.instance.updateMedicine(updatedMedicine);
+
+      if (!mounted) return;
+
+      // Show success and go back
+      Navigator.pop(context, true); // Return true to indicate success
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã lưu thay đổi!'),
+          backgroundColor: Color(0xFF5F9F7A),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi lưu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: const Text('Bạn có chắc muốn xóa thuốc này?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Xóa'),
+          ),
+        ],
       ),
     );
+
+    if (confirm == true && _medicine?.id != null) {
+      try {
+        await DatabaseHelper.instance.deleteMedicine(_medicine!.id!);
+        
+        if (!mounted) return;
+        
+        Navigator.pop(context, true);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xóa thuốc'),
+            backgroundColor: Color(0xFF5F9F7A),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -145,7 +281,7 @@ class _MedicineEditState extends State<MedicineEdit> {
                   const Expanded(
                     child: Center(
                       child: Text(
-                        'Thông tin thuốc',
+                        'Chỉnh sửa thuốc',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -154,14 +290,37 @@ class _MedicineEditState extends State<MedicineEdit> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 50),
+                  // Delete button
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade400,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.delete,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      onPressed: _confirmDelete,
+                    ),
+                  ),
                 ],
               ),
             ),
 
             const SizedBox(height: 30),
 
-            // Form content (editable)
+            // Form content
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -178,7 +337,10 @@ class _MedicineEditState extends State<MedicineEdit> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    CustomTextField(controller: _nameController),
+                    CustomTextField(
+                      controller: _nameController,
+                      hintText: 'Nhập tên thuốc',
+                    ),
 
                     const SizedBox(height: 25),
 
@@ -192,7 +354,10 @@ class _MedicineEditState extends State<MedicineEdit> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    CustomTextField(controller: _descController),
+                    CustomTextField(
+                      controller: _descController,
+                      hintText: 'Nhập mô tả',
+                    ),
 
                     const SizedBox(height: 25),
 
@@ -206,7 +371,10 @@ class _MedicineEditState extends State<MedicineEdit> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    CustomTextField(controller: _usageController),
+                    CustomTextField(
+                      controller: _usageController,
+                      hintText: 'Nhập công dụng',
+                    ),
 
                     const SizedBox(height: 25),
 
@@ -263,7 +431,7 @@ class _MedicineEditState extends State<MedicineEdit> {
 
                     // HSD
                     GestureDetector(
-                      onTap: () => _selectDate(context),
+                      onTap: () => _selectExpiryDate(context),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
@@ -299,7 +467,7 @@ class _MedicineEditState extends State<MedicineEdit> {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+                              '${_expiryDate.day.toString().padLeft(2, '0')}/${_expiryDate.month.toString().padLeft(2, '0')}/${_expiryDate.year}',
                               style: const TextStyle(
                                 fontSize: 18,
                                 color: Colors.white,
@@ -331,15 +499,17 @@ class _MedicineEditState extends State<MedicineEdit> {
                 ],
               ),
               child: TextButton(
-                onPressed: _saveChanges,
-                child: const Text(
-                  'Chỉnh sửa',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
+                onPressed: _isLoading ? null : _saveChanges,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'Lưu thay đổi',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
