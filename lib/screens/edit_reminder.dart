@@ -4,35 +4,39 @@ import '../database/database_helper_firebase.dart';
 import '../models/reminder.dart';
 import '../database/auth_service.dart';
 
-class AddReminder extends StatefulWidget {
-  const AddReminder({super.key});
+class EditReminder extends StatefulWidget {
+  const EditReminder({super.key});
 
   @override
-  State<AddReminder> createState() => _AddReminderScreenState();
+  State<EditReminder> createState() => _EditReminderScreenState();
 }
 
-class _AddReminderScreenState extends State<AddReminder> {
+class _EditReminderScreenState extends State<EditReminder> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   bool _isRepeatEnabled = false;
   String _repeatMode = 'Một lần';
   List<bool> _selectedDays = List.filled(7, false);
   bool _isLoading = false;
+  Reminder? _reminder;
   List<String> _times = [];
-  DateTime? _selectedDate; // Ngày được chọn cho "Một lần"
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Nhận ngày được chọn từ home
-    final args = ModalRoute.of(context)?.settings.arguments as DateTime?;
-    if (args != null && _selectedDate == null) {
-      setState(() {
-        _selectedDate = args;
-        // Tự động set về "Một lần" nếu có ngày được chọn
-        _repeatMode = 'Một lần';
-        _isRepeatEnabled = false;
-      });
+    final args = ModalRoute.of(context)?.settings.arguments as Reminder?;
+    if (args != null && _reminder == null) {
+      _reminder = args;
+      _nameController.text = args.medicineName;
+      _descriptionController.text = args.description ?? '';
+      _isRepeatEnabled = args.isRepeatEnabled;
+      _repeatMode = args.repeatMode;
+      _times = List<String>.from(args.times);
+      
+      // Set selected days based on customDays
+      for (int i = 0; i < 7; i++) {
+        _selectedDays[i] = args.customDays.contains(i);
+      }
     }
   }
 
@@ -104,6 +108,9 @@ class _AddReminderScreenState extends State<AddReminder> {
   }
 
   void _showCustomRepeatDialog() {
+    // Tạo một bản sao của selectedDays để sử dụng trong dialog
+    final dialogSelectedDays = List<bool>.from(_selectedDays);
+    
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -136,13 +143,13 @@ class _AddReminderScreenState extends State<AddReminder> {
                       ),
                       child: Column(
                         children: [
-                          _buildDayOption('Thứ Hai', 0, setDialogState),
-                          _buildDayOption('Thứ Ba', 1, setDialogState),
-                          _buildDayOption('Thứ Tư', 2, setDialogState),
-                          _buildDayOption('Thứ Năm', 3, setDialogState),
-                          _buildDayOption('Thứ Sáu', 4, setDialogState),
-                          _buildDayOption('Thứ Bảy', 5, setDialogState),
-                          _buildDayOption('Chủ Nhật', 6, setDialogState),
+                          _buildDayOptionInDialog('Thứ Hai', 0, dialogSelectedDays, setDialogState),
+                          _buildDayOptionInDialog('Thứ Ba', 1, dialogSelectedDays, setDialogState),
+                          _buildDayOptionInDialog('Thứ Tư', 2, dialogSelectedDays, setDialogState),
+                          _buildDayOptionInDialog('Thứ Năm', 3, dialogSelectedDays, setDialogState),
+                          _buildDayOptionInDialog('Thứ Sáu', 4, dialogSelectedDays, setDialogState),
+                          _buildDayOptionInDialog('Thứ Bảy', 5, dialogSelectedDays, setDialogState),
+                          _buildDayOptionInDialog('Chủ Nhật', 6, dialogSelectedDays, setDialogState),
                         ],
                       ),
                     ),
@@ -151,6 +158,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                       onPressed: () {
                         setState(() {
                           _repeatMode = 'Tùy chỉnh';
+                          _selectedDays = dialogSelectedDays;
                         });
                         Navigator.pop(context);
                       },
@@ -180,6 +188,59 @@ class _AddReminderScreenState extends State<AddReminder> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildDayOptionInDialog(String day, int index, List<bool> selectedDays, StateSetter setDialogState) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            day,
+            style: const TextStyle(
+              fontSize: 18,
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              setDialogState(() {
+                selectedDays[index] = !selectedDays[index];
+              });
+            },
+            child: Container(
+              width: 50,
+              height: 28,
+              decoration: BoxDecoration(
+                color: selectedDays[index]
+                    ? Colors.white
+                    : const Color(0xFF5F9F7A),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                alignment: selectedDays[index]
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  margin: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: selectedDays[index]
+                        ? const Color(0xFF5F9F7A)
+                        : Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -237,31 +298,6 @@ class _AddReminderScreenState extends State<AddReminder> {
     );
   }
 
-  String _getRepeatModeDisplayText() {
-    if (_repeatMode == 'Tùy chỉnh' && _selectedDays.isNotEmpty) {
-      final dayNames = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
-      final selectedDayNames = <String>[];
-      for (int i = 0; i < _selectedDays.length; i++) {
-        if (_selectedDays[i]) {
-          selectedDayNames.add(dayNames[i]);
-        }
-      }
-      if (selectedDayNames.isNotEmpty) {
-        return selectedDayNames.join(', ');
-      }
-    }
-    return _repeatMode;
-  }
-
-  String _formatDate(DateTime date) {
-    final months = [
-      'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4',
-      'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8',
-      'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
-    ];
-    return '${date.day} ${months[date.month - 1]} ${date.year}';
-  }
-
   Widget _buildRepeatOption(String text, bool isSelected) {
     return GestureDetector(
       onTap: () {
@@ -271,10 +307,9 @@ class _AddReminderScreenState extends State<AddReminder> {
         } else {
           setState(() {
             _repeatMode = text;
-            // Nếu chọn "Một lần" thì tắt lặp lại và reset ngày
+            // Nếu chọn "Một lần" thì tắt lặp lại
             if (text == 'Một lần') {
               _isRepeatEnabled = false;
-              _selectedDate = null;
             } else {
               _isRepeatEnabled = true;
             }
@@ -315,6 +350,25 @@ class _AddReminderScreenState extends State<AddReminder> {
     );
   }
 
+  String _getRepeatModeDisplayText() {
+    if (!_isRepeatEnabled) {
+      return 'Không lặp lại';
+    }
+    if (_repeatMode == 'Tùy chỉnh' && _selectedDays.isNotEmpty) {
+      final dayNames = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
+      final selectedDayNames = <String>[];
+      for (int i = 0; i < _selectedDays.length; i++) {
+        if (_selectedDays[i]) {
+          selectedDayNames.add(dayNames[i]);
+        }
+      }
+      if (selectedDayNames.isNotEmpty) {
+        return selectedDayNames.join(', ');
+      }
+    }
+    return _repeatMode;
+  }
+
   void _navigateToSelectTime() async {
     // Validate form
     if (_nameController.text.isEmpty) {
@@ -327,9 +381,13 @@ class _AddReminderScreenState extends State<AddReminder> {
       return;
     }
 
-    // Nếu chọn "Một lần" và chưa có ngày thì mới yêu cầu chọn ngày
-    if (_repeatMode == 'Một lần' && _selectedDate == null) {
-      _showDatePicker();
+    if (_reminder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lỗi: Không tìm thấy thông tin nhắc nhở'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -338,8 +396,8 @@ class _AddReminderScreenState extends State<AddReminder> {
       context,
       '/select_time',
       arguments: {
-        'isEditMode': false,
-        'existingTimes': _times.isEmpty ? ['08:00', '12:00', '18:00'] : _times,
+        'isEditMode': true,
+        'existingTimes': _times,
       },
     );
 
@@ -351,33 +409,7 @@ class _AddReminderScreenState extends State<AddReminder> {
     }
   }
 
-  Future<void> _showDatePicker() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF5F9F7A),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF2D5F3F),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        _selectedDate = picked;
-      });
-    }
-  }
-
-  Future<void> _createReminder() async {
+  Future<void> _updateReminder() async {
     // Validate form
     if (_nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -399,11 +431,10 @@ class _AddReminderScreenState extends State<AddReminder> {
       return;
     }
 
-    // Nếu chọn "Một lần" thì cần có ngày được chọn
-    if (_repeatMode == 'Một lần' && _selectedDate == null) {
+    if (_reminder == null || _reminder!.id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng chọn ngày cho nhắc nhở "Một lần"'),
+          content: Text('Lỗi: Không tìm thấy thông tin nhắc nhở'),
           backgroundColor: Colors.red,
         ),
       );
@@ -429,33 +460,33 @@ class _AddReminderScreenState extends State<AddReminder> {
             customDays.add(i);
           }
         }
-      } else if (_repeatMode == 'Một lần' && _selectedDate != null) {
-        // Với "Một lần", customDays chứa thứ trong tuần của ngày được chọn
-        final dayOfWeek = _selectedDate!.weekday - 1; // 0 = Monday
-        customDays = [dayOfWeek];
       }
 
-      final reminder = Reminder(
-        userId: userId,
-        medicineId: null,
+      // Get existing reminder to preserve some properties
+      final existingReminders = await DatabaseHelper.instance.getReminders(userId);
+      final existingReminder = existingReminders.firstWhere(
+        (r) => r.id == _reminder!.id,
+        orElse: () => throw Exception('Không tìm thấy nhắc nhở cần sửa'),
+      );
+
+      // Create updated reminder object
+      final updatedReminder = existingReminder.copyWith(
         medicineName: _nameController.text,
         description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
         isRepeatEnabled: _isRepeatEnabled && _repeatMode != 'Một lần',
         repeatMode: _repeatMode,
         customDays: customDays,
         times: _times,
-        isEnabled: true,
-        createdAt: DateTime.now(),
       );
 
-      // Save to database
-      await DatabaseHelper.instance.createReminder(reminder);
+      // Update in database
+      await DatabaseHelper.instance.updateReminder(updatedReminder);
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã tạo nhắc nhở "${_nameController.text}"!'),
+          content: Text('Đã cập nhật nhắc nhở "${_nameController.text}"!'),
           backgroundColor: const Color(0xFF5F9F7A),
         ),
       );
@@ -467,10 +498,128 @@ class _AddReminderScreenState extends State<AddReminder> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi khi tạo nhắc nhở: $e'),
+          content: Text('Lỗi khi cập nhật: $e'),
           backgroundColor: Colors.red,
         ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showDeleteConfirmation() {
+    if (_reminder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lỗi: Không tìm thấy thông tin nhắc nhở'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFD4EBD4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Xóa nhắc nhở',
+            style: TextStyle(
+              color: Color(0xFF2D5F3F),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Bạn có chắc muốn xóa nhắc nhở "${_reminder!.medicineName}"?',
+                style: const TextStyle(color: Color(0xFF2D5F3F)),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7FB896),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    child: const Text('Hủy'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _deleteReminder();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade400,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    child: const Text('Xóa'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Future<void> _deleteReminder() async {
+    if (_reminder == null || _reminder!.id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lỗi: Không tìm thấy ID của nhắc nhở'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await DatabaseHelper.instance.deleteReminder(_reminder!.id!);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã xóa nhắc nhở "${_reminder!.medicineName}"'),
+          backgroundColor: const Color(0xFF5F9F7A),
+        ),
+      );
+
+      // Navigate back to home
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi xóa: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -517,7 +666,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                   const Expanded(
                     child: Center(
                       child: Text(
-                        'Thêm nhắc nhở',
+                        'Sửa nhắc nhở',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -589,7 +738,6 @@ class _AddReminderScreenState extends State<AddReminder> {
                               } else {
                                 // Khi tắt lặp lại, set về "Một lần"
                                 _repeatMode = 'Một lần';
-                                _selectedDate = null;
                               }
                             });
                           },
@@ -629,6 +777,52 @@ class _AddReminderScreenState extends State<AddReminder> {
                       ],
                     ),
 
+                    // Hiển thị và cho phép sửa chế độ lặp lại
+                    if (_isRepeatEnabled) ...[
+                      const SizedBox(height: 15),
+                      GestureDetector(
+                        onTap: _showRepeatOptionsDialog,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 15,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7FB896),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _getRepeatModeDisplayText(),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 30),
 
                     // Calendar button
@@ -658,7 +852,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.access_time, size: 24),
+                              const Icon(Icons.calendar_today, size: 24),
                               const SizedBox(width: 10),
                               Text(
                                 _times.isEmpty 
@@ -676,7 +870,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Save button
+                    // Update button
                     Center(
                       child: Container(
                         width: double.infinity,
@@ -691,7 +885,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                           ],
                         ),
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _createReminder,
+                          onPressed: _isLoading ? null : _updateReminder,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2D5F3F),
                             foregroundColor: Colors.white,
@@ -709,7 +903,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                                     Icon(Icons.check, size: 24),
                                     SizedBox(width: 10),
                                     Text(
-                                      'Lưu',
+                                      'Cập nhật',
                                       style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.bold,
@@ -717,6 +911,49 @@ class _AddReminderScreenState extends State<AddReminder> {
                                     ),
                                   ],
                                 ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Delete button
+                    Center(
+                      child: Container(
+                        width: double.infinity,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _showDeleteConfirmation,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade400,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.delete, size: 24),
+                              SizedBox(width: 10),
+                              Text(
+                                'Xóa nhắc nhở',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -731,3 +968,4 @@ class _AddReminderScreenState extends State<AddReminder> {
     );
   }
 }
+
