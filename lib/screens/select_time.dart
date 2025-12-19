@@ -15,6 +15,8 @@ class _SelectTimeScreenState extends State<SelectTime> {
   List<String> _times = ['08:00', '12:00', '18:00'];
   Map<String, dynamic>? _reminderData;
   bool _isLoading = false;
+  bool _isEditMode = false;
+  int? _reminderId;
 
   @override
   void didChangeDependencies() {
@@ -23,6 +25,13 @@ class _SelectTimeScreenState extends State<SelectTime> {
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
       _reminderData = args;
+      _isEditMode = args['isEditMode'] == true;
+      _reminderId = args['reminderId'] as int?;
+      
+      // If edit mode, load existing times
+      if (_isEditMode && args['existingTimes'] != null) {
+        _times = List<String>.from(args['existingTimes']);
+      }
     }
   }
 
@@ -357,57 +366,15 @@ class _SelectTimeScreenState extends State<SelectTime> {
         throw Exception('Không tìm thấy thông tin người dùng');
       }
 
-      // Get custom days list
-      List<int> customDays = [];
-      if (_reminderData?['selectedDays'] != null) {
-        final selectedDays = _reminderData!['selectedDays'] as List<bool>;
-        for (int i = 0; i < selectedDays.length; i++) {
-          if (selectedDays[i]) {
-            customDays.add(i);
-          }
-        }
-      }
-
-      // Create reminder object
-      final reminder = Reminder(
-        userId: userId,
-        medicineId: _reminderData?['medicineId'] as int?,
-        medicineName: _reminderData?['name'] ?? '',
-        description: _reminderData?['description'],
-        isRepeatEnabled: _reminderData?['isRepeatEnabled'] ?? false,
-        repeatMode: _reminderData?['repeatMode'] ?? 'Một lần',
-        customDays: customDays,
-        times: _times,
-        isEnabled: true,
-        createdAt: DateTime.now(),
-      );
-
-      // Save to database
-      await DatabaseHelper.instance.createReminder(reminder);
-
+      // Always return the times list (both edit and create mode)
       if (!mounted) return;
-
-      // Show success and go back to home
-      // Pop back to add_reminder, then pop again to home
-      Navigator.of(context).pop(); // Close select_time
-      Navigator.of(context).pop(); // Close add_reminder
-      
-      // Reload data will happen automatically in home.dart's .then()
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Đã tạo nhắc nhở "${_reminderData?['name'] ?? 'thuốc'}" với ${_times.length} thời gian!',
-          ),
-          backgroundColor: const Color(0xFF5F9F7A),
-        ),
-      );
+      Navigator.of(context).pop(_times);
     } catch (e) {
       if (!mounted) return;
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi khi tạo nhắc nhở: $e'),
+          content: Text('Lỗi: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -609,7 +576,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                        'Tạo',
+                        'Xong',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,

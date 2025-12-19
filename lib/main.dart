@@ -6,6 +6,7 @@ import 'screens/home.dart';
 import 'screens/auth_wrapper.dart';
 import 'screens/settings.dart';
 import 'screens/add_reminder.dart';
+import 'screens/edit_reminder.dart';
 import 'screens/select_time.dart';
 import 'screens/medicine_home.dart';
 import 'screens/medicine_info.dart';
@@ -53,6 +54,7 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const Home(),
         '/settings': (context) => const Settings(),
         '/add_reminder': (context) => const AddReminder(),
+        '/edit_reminder': (context) => const EditReminder(),
         '/select_time': (context) => const SelectTime(),
         '/medicine_home': (context) => const MedicineHome(),
         '/medicine_info': (context) => const MedicineInfo(),

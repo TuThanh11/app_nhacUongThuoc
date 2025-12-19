@@ -253,7 +253,11 @@ class _HomeScreenState extends State<Home> {
         });
       });
     } else if (index == 2) {
-      Navigator.pushNamed(context, '/add_reminder').then((_) {
+      Navigator.pushNamed(
+        context,
+        '/add_reminder',
+        arguments: _selectedDate, // Truyền ngày đã chọn
+      ).then((_) {
         setState(() {
           _currentDate = DateTime.now();
           _selectedDate = DateTime.now();
@@ -861,6 +865,16 @@ class _HomeScreenState extends State<Home> {
     }
   }
 
+  void _editReminder(model.Reminder reminder) {
+    Navigator.pushNamed(
+      context,
+      '/edit_reminder',
+      arguments: reminder,
+    ).then((_) {
+      _loadReminders();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1086,95 +1100,99 @@ class _HomeScreenState extends State<Home> {
                             itemCount: _filteredReminders.length,
                             itemBuilder: (context, index) {
                               final reminder = _filteredReminders[index];
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 15),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 15,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFB8E6C9),
-                                  borderRadius: BorderRadius.circular(25),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  children: [
-                                    CustomPaint(
-                                      size: const Size(60, 60),
-                                      painter: SmallCloverPainter(),
-                                    ),
-                                    const SizedBox(width: 15),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            reminder.medicineName,
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF2D5F3F),
-                                            ),
-                                          ),
-                                          Text(
-                                            TimeFormatHelper.formatList24To12Hour(reminder.times).join(', '),
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              color: Color(0xFF2D5F3F),
-                                            ),
-                                          ),
-                                          if (reminder.description != null &&
-                                              reminder.description!.isNotEmpty)
+                              return GestureDetector(
+                                onTap: () => _editReminder(reminder),
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 15),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 15,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFB8E6C9),
+                                    borderRadius: BorderRadius.circular(25),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      CustomPaint(
+                                        size: const Size(60, 60),
+                                        painter: SmallCloverPainter(),
+                                      ),
+                                      const SizedBox(width: 15),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
                                             Text(
-                                              reminder.description!,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey.shade700,
+                                              reminder.medicineName,
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF2D5F3F),
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                        ],
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: () => _toggleReminderEnabled(reminder),
-                                      child: Container(
-                                        width: 60,
-                                        height: 32,
-                                        decoration: BoxDecoration(
-                                          color: reminder.isEnabled
-                                              ? const Color(0xFF5F9F7A)
-                                              : const Color(0xFF7FB896),
-                                          borderRadius: BorderRadius.circular(20),
-                                        ),
-                                        child: AnimatedAlign(
-                                          duration: const Duration(
-                                            milliseconds: 200,
-                                          ),
-                                          alignment: reminder.isEnabled
-                                              ? Alignment.centerRight
-                                              : Alignment.centerLeft,
-                                          child: Container(
-                                            width: 28,
-                                            height: 28,
-                                            margin: const EdgeInsets.all(2),
-                                            decoration: const BoxDecoration(
-                                              color: Colors.white,
-                                              shape: BoxShape.circle,
+                                            Text(
+                                              TimeFormatHelper.formatList24To12Hour(reminder.times).join(', '),
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                color: Color(0xFF2D5F3F),
+                                              ),
                                             ),
-                                          ),
+                                            if (reminder.description != null &&
+                                                reminder.description!.isNotEmpty)
+                                              Text(
+                                                reminder.description!,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade700,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                          ],
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                      // Toggle enabled button (giữ riêng không phụ thuộc onTap của item)
+                                      GestureDetector(
+                                        onTap: () => _toggleReminderEnabled(reminder),
+                                        child: Container(
+                                          width: 60,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: reminder.isEnabled
+                                                ? const Color(0xFF5F9F7A)
+                                                : const Color(0xFF7FB896),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: AnimatedAlign(
+                                            duration: const Duration(
+                                              milliseconds: 200,
+                                            ),
+                                            alignment: reminder.isEnabled
+                                                ? Alignment.centerRight
+                                                : Alignment.centerLeft,
+                                            child: Container(
+                                              width: 28,
+                                              height: 28,
+                                              margin: const EdgeInsets.all(2),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.white,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               );
                             },
@@ -1315,7 +1333,11 @@ class _HomeScreenState extends State<Home> {
     final isSelected = _selectedIndex == 2;
     return GestureDetector(
       onTap: () {
-        Navigator.pushNamed(context, '/add_reminder').then((_) {
+        Navigator.pushNamed(
+          context,
+          '/add_reminder',
+          arguments: _selectedDate, // Truyền ngày đã chọn
+        ).then((_) {
           setState(() {
             _currentDate = DateTime.now();
             _selectedDate = DateTime.now();

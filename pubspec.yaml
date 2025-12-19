@@ -41,6 +41,10 @@ dependencies:
   
   # Image picking
   image_picker: ^1.0.7
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  audioplayers: ^6.1.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
@@ -83,6 +87,7 @@ flutter:
     - assets/images/avatar10.jpg
     - assets/images/avatar11.jpg
     - assets/images/avatar12.jpg
+    - assets/sounds/alarm.mp3
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
