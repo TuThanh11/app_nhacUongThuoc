@@ -1,0 +1,9 @@
+# Flutter
+**/build/
+.dart_tool/
+
+# Backend NodeJS
+**/node_modules/
+
+# Common
+.env
