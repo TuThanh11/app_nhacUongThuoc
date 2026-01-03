@@ -33,7 +33,7 @@ class _MedicineHomeState extends State<MedicineHome> {
     });
 
     try {
-      // ✅ Lấy Firebase UID từ ApiService
+      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
       
       if (userId == null) {
@@ -43,12 +43,12 @@ class _MedicineHomeState extends State<MedicineHome> {
       print('=== LOAD MEDICINES DEBUG ===');
       print('Using Firebase UID: $userId');
 
-      // ✅ Gọi API để lấy medicines
+      // Gọi API để lấy medicines
       final medicinesData = await ApiService.instance.getMedicines(userId);
       
       print('Loaded ${medicinesData.length} medicines');
 
-      // ✅ Convert từ dynamic sang Medicine objects
+      // Convert từ dynamic sang Medicine objects
       final medicines = medicinesData.map((data) {
         return Medicine.fromMap(data);
       }).toList();
@@ -221,6 +221,8 @@ class _MedicineHomeState extends State<MedicineHome> {
                             itemCount: _filteredMedicines.length,
                             itemBuilder: (context, index) {
                               final medicine = _filteredMedicines[index];
+                              final DateTime expiryDate = DateTime.tryParse(medicine.expiryDate.toString()) ?? DateTime.now();
+                              final bool isExpiringSoon = medicine.expiryDate.difference(DateTime.now()).inDays <= 7;
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 15),
                                 child: Row(
@@ -246,7 +248,7 @@ class _MedicineHomeState extends State<MedicineHome> {
                                             vertical: 16,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFF5F9F7A),
+                                            color: isExpiringSoon ? Colors.orange.shade700 : const Color(0xFF5F9F7A),
                                             borderRadius:
                                                 BorderRadius.circular(30),
                                             boxShadow: [
@@ -258,32 +260,24 @@ class _MedicineHomeState extends State<MedicineHome> {
                                               ),
                                             ],
                                           ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                medicine.name,
-                                                style: const TextStyle(
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.white,
-                                                ),
+                                          child: ListTile(
+                                            title: Text(
+                                              medicine.name,
+                                              style: const TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold, 
+                                                color: Colors.white
                                               ),
-                                              if (medicine.description != null &&
-                                                  medicine
-                                                      .description!.isNotEmpty)
-                                                Text(
-                                                  medicine.description!,
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.white70,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                            ],
+                                            ),
+                                            subtitle: Text(
+                                              isExpiringSoon 
+                                                ? "Hết hạn vào: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}" 
+                                                : (medicine.description ?? ""),
+                                              style: const TextStyle(color: Colors.white70),
+                                            ),
+                                            trailing: isExpiringSoon 
+                                              ? const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 30) 
+                                              : null,
                                           ),
                                         ),
                                       ),

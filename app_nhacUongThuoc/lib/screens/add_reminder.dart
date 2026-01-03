@@ -271,7 +271,7 @@ class _AddReminderScreenState extends State<AddReminder> {
             _repeatMode = text;
             if (text == 'Một lần') {
               _isRepeatEnabled = false;
-              // ✅ Tự động mở date picker khi chọn "Một lần"
+              // Tự động mở date picker khi chọn "Một lần"
               Navigator.pop(context);
               _showDatePicker();
             } else {
@@ -394,7 +394,7 @@ class _AddReminderScreenState extends State<AddReminder> {
       return;
     }
 
-    // ✅ VALIDATE: Kiểm tra ngày cho "Một lần"
+    // VALIDATE: Kiểm tra ngày cho "Một lần"
     if (_repeatMode == 'Một lần' && _selectedDate == null) {
       // Tự động hiển thị date picker
       await _showDatePicker();
@@ -411,7 +411,7 @@ class _AddReminderScreenState extends State<AddReminder> {
       }
     }
 
-    // ✅ VALIDATE: Nếu chọn "Tùy chỉnh" mà chưa chọn ngày nào
+    // VALIDATE: Nếu chọn "Tùy chỉnh" mà chưa chọn ngày nào
     if (_repeatMode == 'Tùy chỉnh') {
       final hasSelectedDay = _selectedDays.any((selected) => selected);
       if (!hasSelectedDay) {
@@ -430,7 +430,7 @@ class _AddReminderScreenState extends State<AddReminder> {
     });
 
     try {
-      // ✅ Lấy Firebase UID từ ApiService
+      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
       if (userId == null) {
         throw Exception('Chưa đăng nhập');
@@ -441,7 +441,7 @@ class _AddReminderScreenState extends State<AddReminder> {
       print('repeatMode: $_repeatMode');
       print('selectedDate: $_selectedDate');
 
-      // ✅ Get custom days list - LUÔN TẠO LIST HỢP LỆ
+      // Get custom days list - LUÔN TẠO LIST HỢP LỆ
       List<int> customDays = [];
       
       if (_repeatMode == 'Tùy chỉnh') {
@@ -452,7 +452,7 @@ class _AddReminderScreenState extends State<AddReminder> {
           }
         }
       } else if (_repeatMode == 'Một lần') {
-        // ✅ Với "Một lần", LUÔN dùng selectedDate nếu có
+        // Với "Một lần", LUÔN dùng selectedDate nếu có
         if (_selectedDate != null) {
           final dayOfWeek = _selectedDate!.weekday == 7 ? 6 : _selectedDate!.weekday - 1; // 0-6, CN=6
           customDays = [dayOfWeek];
@@ -472,7 +472,7 @@ class _AddReminderScreenState extends State<AddReminder> {
 
       print('customDays: $customDays');
 
-      // ✅ Gọi API để tạo reminder
+      // Gọi API để tạo reminder
       final result = await ApiService.instance.createReminder(
         userId: userId, // Truyền Firebase UID
         medicineName: _nameController.text,
@@ -487,7 +487,7 @@ class _AddReminderScreenState extends State<AddReminder> {
 
       if (!mounted) return;
 
-      // ✅ Kiểm tra kết quả
+      // Kiểm tra kết quả
       if (result['success']) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -495,7 +495,7 @@ class _AddReminderScreenState extends State<AddReminder> {
             backgroundColor: const Color(0xFF5F9F7A),
           ),
         );
-        Navigator.of(context).pop(true); // ✅ Trả về true để Home reload
+        Navigator.of(context).pop(true); // Trả về true để Home reload
       } else {
         throw Exception(result['message'] ?? 'Tạo nhắc nhở thất bại');
       }
@@ -707,7 +707,7 @@ class _AddReminderScreenState extends State<AddReminder> {
                     ),
                   ],
 
-                  // ✅ Hiển thị ngày đã chọn cho "Một lần"
+                  // Hiển thị ngày đã chọn cho "Một lần"
                   if (_repeatMode == 'Một lần' && _selectedDate != null) ...[
                     const SizedBox(height: 15),
                     GestureDetector(

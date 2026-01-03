@@ -60,18 +60,18 @@ class _SelectTimeScreenState extends State<SelectTime> {
       print('Invalid index: $index, times length: ${_times.length}');
       return;
     }
-    // ✅ Kiểm tra và validate thời gian hiện tại
+    // Kiểm tra và validate thời gian hiện tại
     String currentTime = _times[index];
     List<String> timeParts = currentTime.split(':');
     
-    // ✅ Validate format
+    // Validate format
     if (timeParts.length != 2) {
       print('Invalid time format: $currentTime');
       currentTime = '09:00'; // Default fallback
       timeParts = ['09', '00'];
     }
     
-    // ✅ Parse với error handling
+    // Parse với error handling
     int hour24;
     int selectedMinute;
     
@@ -79,7 +79,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
       hour24 = int.parse(timeParts[0]);
       selectedMinute = int.parse(timeParts[1]);
       
-      // ✅ Validate ranges
+      // Validate ranges
       if (hour24 < 0 || hour24 > 23) hour24 = 9;
       if (selectedMinute < 0 || selectedMinute > 59) selectedMinute = 0;
     } catch (e) {
@@ -317,7 +317,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          // ✅ Validate trước khi lưu
+                          // Validate trước khi lưu
                           try {
                             int hour24;
                             if (isPM) {
@@ -326,7 +326,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
                                 hour24 = selectedHour;
                               }
                               
-                              // ✅ Validate ranges
+                              // Validate ranges
                               if (hour24 < 0 || hour24 > 23) hour24 = 9;
                               if (selectedMinute < 0 || selectedMinute > 59) selectedMinute = 0;
                               
@@ -399,7 +399,7 @@ class _SelectTimeScreenState extends State<SelectTime> {
       return;
     }
 
-    // ✅ Validate tất cả thời gian trước khi trả về
+    // Validate tất cả thời gian trước khi trả về
     List<String> validTimes = [];
     for (String time in _times) {
       List<String> parts = time.split(':');

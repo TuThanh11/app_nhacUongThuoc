@@ -140,7 +140,7 @@ class _MedicineEditState extends State<MedicineEdit> {
     });
 
     try {
-      // ✅ Lấy Firebase UID từ ApiService
+      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
       if (userId == null) {
         throw Exception('Chưa đăng nhập');
@@ -154,7 +154,7 @@ class _MedicineEditState extends State<MedicineEdit> {
       print('Using Firebase UID: $userId');
       print('Medicine ID: ${_medicine!.id}');
 
-      // ✅ Gọi API để update medicine
+      // Gọi API để update medicine
       final result = await ApiService.instance.updateMedicine(
         userId: userId,
         id: _medicine!.id.toString(),
@@ -171,7 +171,7 @@ class _MedicineEditState extends State<MedicineEdit> {
 
       if (!mounted) return;
 
-      // ✅ Kiểm tra kết quả
+      // Kiểm tra kết quả
       if (result['success']) {
         // Show success and go back
         Navigator.pop(context, true); // Return true to indicate success
@@ -228,7 +228,7 @@ class _MedicineEditState extends State<MedicineEdit> {
 
     if (confirm == true && _medicine?.id != null) {
       try {
-        // ✅ Lấy Firebase UID
+        // Lấy Firebase UID
         final userId = await ApiService.instance.getUserId();
         if (userId == null) {
           throw Exception('Chưa đăng nhập');
@@ -238,7 +238,7 @@ class _MedicineEditState extends State<MedicineEdit> {
         print('Using Firebase UID: $userId');
         print('Medicine ID: ${_medicine!.id}');
 
-        // ✅ Gọi API để delete medicine
+        // Gọi API để delete medicine
         final result = await ApiService.instance.deleteMedicine(
           userId,
           _medicine!.id.toString(),
@@ -246,7 +246,7 @@ class _MedicineEditState extends State<MedicineEdit> {
         
         if (!mounted) return;
 
-        // ✅ Kiểm tra kết quả
+        // Kiểm tra kết quả
         if (result['success']) {
           Navigator.pop(context, true);
           

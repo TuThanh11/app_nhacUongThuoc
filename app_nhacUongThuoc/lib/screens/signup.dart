@@ -162,12 +162,20 @@ class _SignupScreenState extends State<Signup> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Title
-                      const Text(
-                        'Nhắc Uống Thuốc',
+                      Text(
+                        'ĐĂNG KÝ',
                         style: TextStyle(
                           fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2D5F3F),
+                          fontWeight: FontWeight.w900, 
+                          color: const Color(0xFF2D5F3F),
+                          letterSpacing: 1.5, 
+                          shadows: [
+                            Shadow(
+                              offset: const Offset(0, 2),
+                              blurRadius: 4.0,
+                              color: Colors.black.withOpacity(0.1), 
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 40),

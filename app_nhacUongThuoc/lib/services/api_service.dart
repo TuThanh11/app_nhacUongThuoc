@@ -18,7 +18,7 @@ class ApiService {
   String? _userId;
   Map<String, dynamic>? _userInfo;
 
-  // ✅ Thêm timeout cho tất cả request
+  // Thêm timeout cho tất cả request
   static const Duration timeoutDuration = Duration(seconds: 10);
 
   // Lưu userId
@@ -111,7 +111,7 @@ class ApiService {
               'password': password,
             }),
           )
-          .timeout(timeoutDuration); // ✅ Thêm timeout
+          .timeout(timeoutDuration); // Thêm timeout
 
       return _handleResponse(response);
     } on http.ClientException catch (e) {
@@ -149,7 +149,7 @@ class ApiService {
               'password': password,
             }),
           )
-          .timeout(timeoutDuration); // ✅ Thêm timeout
+          .timeout(timeoutDuration); // Thêm timeout
 
       final data = _handleResponse(response);
       

@@ -15,7 +15,7 @@ class AlarmManagerService {
   Timer? _checkTimer;
   final Set<String> _triggeredAlarms = {}; // Để tránh trigger nhiều lần
 
-  // ✅ Bắt đầu service kiểm tra alarm
+  // Bắt đầu service kiểm tra alarm
   void startMonitoring() {
     print('🚀 AlarmManagerService started');
     
@@ -49,7 +49,7 @@ class AlarmManagerService {
     // Lấy số lần đã snooze
     int currentCount = _snoozeCount[reminderId] ?? 0;
     
-    // ✅ Nếu đã snooze 3 lần thì ghi nhận là missed
+    // Nếu đã snooze 3 lần thì ghi nhận là missed
     if (currentCount >= 3) {
       print('❌ MISSED: $medicineName after 3 snoozes');
       _logMissedMedicine(reminderId, medicineName, time);
@@ -64,7 +64,7 @@ class AlarmManagerService {
     // Hủy snooze cũ nếu có
     _snoozeTimers[reminderId]?.cancel();
     
-    // ✅ Tạo timer mới sau 5 phút
+    // Tạo timer mới sau 5 phút
     _snoozeTimers[reminderId] = Timer(const Duration(minutes: 5), () {
       print('🔔 SNOOZE #${currentCount + 1} TRIGGERED: $medicineName');
       
@@ -108,7 +108,7 @@ class AlarmManagerService {
     }
   }
 
-  // ✅ Kiểm tra các alarm cần trigger
+  // Kiểm tra các alarm cần trigger
   Future<void> _checkAlarms() async {
     try {
       final now = DateTime.now();
@@ -152,7 +152,7 @@ class AlarmManagerService {
               // Đánh dấu đã trigger
               _triggeredAlarms.add(alarmKey);
               
-              // ✅ Hiển thị MedicineCallScreen
+              // Hiển thị MedicineCallScreen
               _showMedicineCallScreen(
                 reminderId: reminder.id!,
                 medicineName: reminder.medicineName,
@@ -176,7 +176,7 @@ class AlarmManagerService {
     }
   }
 
-  // ✅ Hiển thị màn hình MedicineCall
+  // Hiển thị màn hình MedicineCall
   void _showMedicineCallScreen({
     required String reminderId,
     required String medicineName,
@@ -206,7 +206,7 @@ class AlarmManagerService {
     }
   }
 
-  // ✅ Dọn dẹp các trigger cũ
+  // Dọn dẹp các trigger cũ
   void _cleanupOldTriggers() {
     if (_triggeredAlarms.length > 100) {
       _triggeredAlarms.clear();
@@ -214,7 +214,7 @@ class AlarmManagerService {
     }
   }
 
-  // ✅ Force check ngay lập tức (dùng cho test)
+  // Force check ngay lập tức (dùng cho test)
   Future<void> forceCheck() async {
     print('🔍 Force checking alarms...');
     await _checkAlarms();

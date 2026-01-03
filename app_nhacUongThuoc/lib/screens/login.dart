@@ -97,7 +97,7 @@ class _LoginScreenState extends State<Login> {
       return;
     }
 
-    // ✅ Chưa có API reset password, hiển thị thông báo
+    // Chưa có API reset password, hiển thị thông báo
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Chức năng này chưa được triển khai'),
@@ -290,17 +290,17 @@ class _LoginScreenState extends State<Login> {
                       const SizedBox(height: 15),
 
                       // Quên mật khẩu
-                      TextButton(
-                        onPressed: _handleForgotPassword,
-                        child: const Text(
-                          'Quên mật khẩu?',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Color(0xFF2D5F3F),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
+                      // TextButton(
+                      //   onPressed: _handleForgotPassword,
+                      //   child: const Text(
+                      //     'Quên mật khẩu?',
+                      //     style: TextStyle(
+                      //       fontSize: 16,
+                      //       color: Color(0xFF2D5F3F),
+                      //     ),
+                      //   ),
+                      // ),
+                      // const SizedBox(height: 20),
 
                       // Đăng nhập button
                       _isLoading

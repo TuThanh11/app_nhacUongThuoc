@@ -130,7 +130,7 @@ class Reminder {
 
   // Helper method: Kiểm tra reminder có hoạt động vào ngày cụ thể không
   bool isActiveOnDay(int dayOfWeek) {
-    // ✅ Nếu là "Một lần", chỉ kiểm tra customDays
+    // Nếu là "Một lần", chỉ kiểm tra customDays
     if (repeatMode == 'Một lần') {
       return customDays.contains(dayOfWeek);
     }
@@ -153,7 +153,7 @@ class Reminder {
 
   // Helper method: Kiểm tra reminder có active vào ngày cụ thể không
   bool isActiveOnDate(DateTime date) {
-    // ✅ Nếu là "Một lần", kiểm tra CHÍNH XÁC ngày
+    // Nếu là "Một lần", kiểm tra CHÍNH XÁC ngày
     if (repeatMode == 'Một lần' && selectedDate != null) {
       // So sánh chỉ ngày/tháng/năm, bỏ qua giờ
       return date.year == selectedDate!.year &&

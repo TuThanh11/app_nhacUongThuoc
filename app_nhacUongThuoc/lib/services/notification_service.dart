@@ -42,20 +42,16 @@ class NotificationService {
     );
 
     // Create notification channel for Android
-    const androidChannel = AndroidNotificationChannel(
-      channelId,
-      channelName,
-      description: channelDescription,
-      importance: Importance.max,
-      playSound: true,
-      enableVibration: true,
-      sound: RawResourceAndroidNotificationSound('alarm'),
+    const AndroidNotificationChannel expiryChannel = AndroidNotificationChannel(
+      'expiry_channel', // id
+      'Cảnh báo hạn sử dụng', // title
+      description: 'Thông báo khi thuốc của bạn sắp hết hạn',
+      importance: Importance.high,
     );
 
     await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(androidChannel);
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(expiryChannel);
   }
 
   Future<void> _onNotificationTapped(NotificationResponse response) async {
@@ -316,5 +312,28 @@ class NotificationService {
     } catch (e) {
       print('Error cancelling displayed notifications: $e');
     }
+  }
+
+  Future<void> showExpiryWarning(String medicineName, DateTime expiryDate) async {
+    // Tính số ngày còn lại để đưa vào nội dung
+    final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+    
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'expiry_channel', // Quan trọng: ID kênh
+      'Cảnh báo hết hạn',
+      channelDescription: 'Thông báo khi thuốc sắp hết hạn',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher', // Đảm bảo icon này tồn tại
+    );
+
+    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+
+    await _notifications.show(
+      medicineName.hashCode, // ID duy nhất cho mỗi loại thuốc
+      '⚠️ Thuốc sắp hết hạn!',
+      'Thuốc "$medicineName" sẽ hết hạn vào ngày ${expiryDate.day}/${expiryDate.month} (còn $daysLeft ngày).',
+      platformDetails,
+    );
   }
 }

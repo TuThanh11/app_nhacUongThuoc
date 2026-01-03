@@ -55,7 +55,7 @@ class _MedicineCallScreenState extends State<MedicineCallScreen>
       CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
     );
 
-    // ✅ Tự động snooze sau 30 giây
+    // Tự động snooze sau 30 giây
     _autoCloseTimer = Timer(const Duration(seconds: 30), () {
       if (mounted && !_isProcessing) {
         _onSnooze();
@@ -252,7 +252,7 @@ class _MedicineCallScreenState extends State<MedicineCallScreen>
 
                     const Spacer(),
 
-                    // ✅ Hiển thị thời gian
+                    // Hiển thị thời gian
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 30,
@@ -304,7 +304,7 @@ class _MedicineCallScreenState extends State<MedicineCallScreen>
 
                     const Spacer(),
 
-                    // ✅ Action buttons với loading state
+                    // Action buttons với loading state
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 85),
                       child: Row(

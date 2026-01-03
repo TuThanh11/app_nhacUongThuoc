@@ -30,7 +30,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       if (mounted) {
         setState(() {
           _isLoggedIn = userId != null;
-          _isLoading = false; // ✅ QUAN TRỌNG: Phải tắt loading
+          _isLoading = false; // QUAN TRỌNG: Phải tắt loading
         });
       }
       
@@ -42,7 +42,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       if (mounted) {
         setState(() {
           _isLoggedIn = false;
-          _isLoading = false; // ✅ QUAN TRỌNG: Phải tắt loading ngay cả khi lỗi
+          _isLoading = false; // QUAN TRỌNG: Phải tắt loading ngay cả khi lỗi
         });
       }
     }

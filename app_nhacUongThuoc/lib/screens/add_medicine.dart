@@ -106,7 +106,7 @@ class _AddMedicineState extends State<AddMedicine> {
     });
 
     try {
-      // ✅ Lấy Firebase UID từ ApiService
+      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
       
       if (userId == null) {
@@ -116,7 +116,7 @@ class _AddMedicineState extends State<AddMedicine> {
       print('=== CREATE MEDICINE DEBUG ===');
       print('Using Firebase UID: $userId');
 
-      // ✅ Gọi API để tạo medicine
+      // Gọi API để tạo medicine
       final result = await ApiService.instance.createMedicine(
         userId: userId,
         name: _nameController.text.trim(),
@@ -134,7 +134,7 @@ class _AddMedicineState extends State<AddMedicine> {
 
       if (!mounted) return;
 
-      // ✅ Kiểm tra kết quả
+      // Kiểm tra kết quả
       if (result['success']) {
         // Trả về true để báo hiệu thêm thành công
         Navigator.pop(context, true);

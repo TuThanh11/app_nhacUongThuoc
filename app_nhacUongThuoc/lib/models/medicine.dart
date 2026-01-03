@@ -1,7 +1,7 @@
 // lib/models/medicine.dart
 
 class Medicine {
-  final String? id; // ✅ ĐỔI: Từ int? sang String? để hỗ trợ Firestore document ID
+  final String? id; 
   final int userId;
   final String name;
   final String? description;
@@ -24,7 +24,7 @@ class Medicine {
   // Chuyển từ Map sang Medicine object
   factory Medicine.fromMap(Map<String, dynamic> map) {
     return Medicine(
-      id: map['id']?.toString(), // ✅ Parse ID dưới dạng String
+      id: map['id']?.toString(), 
       userId: map['user_id'] as int,
       name: map['name'] as String,
       description: map['description'] as String?,
@@ -51,12 +51,12 @@ class Medicine {
 
   // Copy with - để update dữ liệu
   Medicine copyWith({
-    String? id, // ✅ ĐỔI: Từ int? sang String?
+    String? id, 
     int? userId,
     String? name,
     String? description,
     String? usage,
-    DateTime? startDate,
+    DateTime? startDate,  
     DateTime? expiryDate,
     DateTime? createdAt,
   }) {

@@ -7,6 +7,7 @@ import '../utils/time_format_helper.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_fonts/google_fonts.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -33,7 +34,9 @@ class _HomeScreenState extends State<Home> {
   void initState() {
     super.initState();
     _selectedIndex = 2;
-    _loadReminders();
+    _loadReminders().then((_) {
+      _checkMedicineExpiry(); // Tự động check khi vào app
+    });
     _loadUserAvatar();
   }
 
@@ -153,13 +156,14 @@ class _HomeScreenState extends State<Home> {
     _searchController.dispose();
     super.dispose();
   }
+
   Future<void> _loadReminders() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // ✅ Lấy Firebase UID từ ApiService
+      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
       
       if (userId == null) {
@@ -169,12 +173,12 @@ class _HomeScreenState extends State<Home> {
       print('=== LOAD REMINDERS DEBUG ===');
       print('Using Firebase UID: $userId');
       
-      // ✅ Gọi API để lấy reminders với Firebase UID
+      // Gọi API để lấy reminders với Firebase UID
       final remindersData = await ApiService.instance.getReminders(userId);
       
       print('Loaded ${remindersData.length} reminders from API');
       
-      // ✅ Convert từ dynamic sang Reminder objects
+      // Convert từ dynamic sang Reminder objects
       final reminders = remindersData.map((data) {
         return model.Reminder.fromMap(data);
       }).toList();
@@ -217,6 +221,25 @@ class _HomeScreenState extends State<Home> {
       }
     } catch (e) {
       print('Error loading avatar: $e');
+    }
+  }
+
+  Future<void> _checkMedicineExpiry() async {
+    final userId = await ApiService.instance.getUserId();
+    if (userId == null) return;
+
+    final medicines = await ApiService.instance.getMedicines(userId);
+    for (var m in medicines) {
+      final expiryDate = DateTime.parse(m['expiryDate']);
+      final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+
+      // Nếu còn đúng 7 ngày hoặc 3 ngày thì báo
+      if (daysLeft == 7 || daysLeft == 3 || daysLeft == 0) {
+        await NotificationService().showExpiryWarning(
+          m['name'], 
+          expiryDate
+        );
+      }
     }
   }
 
@@ -274,7 +297,7 @@ class _HomeScreenState extends State<Home> {
           });
           await _loadReminders();
           
-          // ✅ Schedule notifications cho reminders mới
+          // Schedule notifications cho reminders mới
           for (var reminder in _reminders.where((r) => r.isEnabled)) {
             await NotificationService().scheduleReminder(reminder);
           }
@@ -283,6 +306,24 @@ class _HomeScreenState extends State<Home> {
     }
   }
 
+  bool _hasNotifications() {
+    final now = DateTime.now();
+    final currentTime = now.hour * 60 + now.minute;
+
+    for (var reminder in _filteredReminders) {
+      for (var time in reminder.times) {
+        final timeParts = time.split(':');
+        final reminderMinutes = int.parse(timeParts[0]) * 60 + int.parse(timeParts[1]);
+        final difference = reminderMinutes - currentTime;
+
+        // Chấm đỏ chỉ hiện khi có thuốc sắp uống trong 60 phút tới
+        if (difference > 0 && difference <= 60) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
   void _toggleSelectionMode() {
     setState(() {
       _isSelectionMode = !_isSelectionMode;
@@ -558,7 +599,7 @@ class _HomeScreenState extends State<Home> {
     return weeks;
   }
 
-  void _showNotifications() {
+  Future<void> _showNotifications() async {
     final now = DateTime.now();
     final currentTime = now.hour * 60 + now.minute;
 
@@ -568,17 +609,42 @@ class _HomeScreenState extends State<Home> {
     for (var reminder in _filteredReminders) {
       for (var time in reminder.times) {
         final timeParts = time.split(':');
-        final reminderMinutes =
-            int.parse(timeParts[0]) * 60 + int.parse(timeParts[1]);
+        final reminderMinutes = int.parse(timeParts[0]) * 60 + int.parse(timeParts[1]);
         final difference = reminderMinutes - currentTime;
 
         if (difference > 0 && difference <= 60) {
-          upcoming.add({'name': reminder.medicineName, 'time': TimeFormatHelper.format24To12Hour(time)});
-        } else if (difference < 0 && difference > -180) {
-          overdue.add({'name': reminder.medicineName, 'time': TimeFormatHelper.format24To12Hour(time)});
+          upcoming.add({
+            'name': 'Uống thuốc: ${reminder.medicineName}',
+            'time': TimeFormatHelper.format24To12Hour(time),
+            'type': 'medicine'
+          });
         }
       }
     }
+
+    try {
+      final userId = await ApiService.instance.getUserId();
+      if (userId != null) {
+        // Gọi API lấy danh sách thuốc (hoặc dùng list thuốc đã load ở MedicineHome)
+        final medicinesData = await ApiService.instance.getMedicines(userId);
+        for (var m in medicinesData) {
+          final expiryDate = DateTime.parse(m['expiryDate']);
+          final daysLeft = expiryDate.difference(now).inDays;
+
+          if (daysLeft >= 0 && daysLeft <= 7) {
+            upcoming.add({
+              'name': 'Hết hạn: ${m['name']}',
+              'time': '${daysLeft == 0 ? "Hôm nay" : "Còn $daysLeft ngày"}',
+              'type': 'expiry'
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('Lỗi lấy hạn sử dụng: $e');
+    }
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -635,43 +701,12 @@ class _HomeScreenState extends State<Home> {
                             (notif) => _buildNotificationItem(
                               notif['name']!,
                               notif['time']!,
-                              const Color(0xFF5F9F7A),
+                              notif['type'] == 'expiry' ? Colors.orange : const Color(0xFF5F9F7A),
+                              
                             ),
                           ),
-                          const SizedBox(height: 15),
-                        ],
-                        if (overdue.isNotEmpty) ...[
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFE57373),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Đã trễ',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFE57373),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          ...overdue.map(
-                            (notif) => _buildNotificationItem(
-                              notif['name']!,
-                              notif['time']!,
-                              const Color(0xFFE57373),
-                            ),
-                          ),
-                        ],
-                        if (upcoming.isEmpty && overdue.isEmpty)
+                        ] else
+                          // Hiển thị trạng thái trống khi không có thông báo "Sắp diễn ra"
                           Center(
                             child: Padding(
                               padding: const EdgeInsets.all(30),
@@ -684,7 +719,7 @@ class _HomeScreenState extends State<Home> {
                                   ),
                                   const SizedBox(height: 15),
                                   Text(
-                                    'Không có thông báo',
+                                    'Không có nhắc nhở sắp tới',
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Colors.grey.shade600,
@@ -760,7 +795,7 @@ class _HomeScreenState extends State<Home> {
   }
 
   Future<void> _deleteSelected() async {
-    // ✅ QUAN TRỌNG: Đảm bảo selectedIds là List<String> không phải List<int>
+    // QUAN TRỌNG: Đảm bảo selectedIds là List<String> không phải List<int>
     // Bạn cần có biến state này ở đầu class:
     // final Set<String> _selectedIds = {};
     
@@ -812,13 +847,13 @@ class _HomeScreenState extends State<Home> {
     if (confirm != true) return;
 
     try {
-      // ✅ Lấy userId
+      // Lấy userId
       final userId = await ApiService.instance.getUserId();
       if (userId == null) {
         throw Exception('Chưa đăng nhập');
       }
 
-      // ✅ Xóa từng reminder
+      // Xóa từng reminder
       int successCount = 0;
       int failCount = 0;
 
@@ -838,16 +873,16 @@ class _HomeScreenState extends State<Home> {
         }
       }
 
-      // ✅ Clear selection và thoát selection mode
+      // Clear selection và thoát selection mode
       setState(() {
         _selectedIds.clear();
         _isSelectionMode = false;
       });
 
-      // ✅ Reload danh sách
+      // Reload danh sách
       await _loadReminders();
 
-      // ✅ Hiển thị kết quả
+      // Hiển thị kết quả
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -936,7 +971,7 @@ class _HomeScreenState extends State<Home> {
 
   Future<void> _toggleReminderEnabled(model.Reminder reminder) async {
     try {
-      // ✅ Lấy userId
+      // Lấy userId
       final userId = await ApiService.instance.getUserId();
       if (userId == null) {
         throw Exception('Chưa đăng nhập');
@@ -946,14 +981,14 @@ class _HomeScreenState extends State<Home> {
         throw Exception('Reminder ID is null');
       }
 
-      // ✅ Gọi API toggle
+      // Gọi API toggle
       final result = await ApiService.instance.toggleReminder(userId, reminder.id!);
       
       if (result['success']) {
         final isEnabled = result['isEnabled'] == true;
         
-        // ✅ XỬ LÝ NOTIFICATION
-        // ✅ CHỈ schedule notification trên mobile
+        // XỬ LÝ NOTIFICATION
+        // CHỈ schedule notification trên mobile
         if (!kIsWeb) {
           if (isEnabled) {
             await NotificationService().scheduleReminder(
@@ -1019,7 +1054,7 @@ class _HomeScreenState extends State<Home> {
                   GestureDetector(
                     onTap: () async {
                       await Navigator.pushNamed(context, '/user_info');
-                      // ✅ CHỈ load avatar, KHÔNG reset date và reminders
+                      // CHỈ load avatar, KHÔNG reset date và reminders
                       await _loadUserAvatar();
                       if (mounted) {
                         setState(() {
@@ -1050,35 +1085,15 @@ class _HomeScreenState extends State<Home> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Container(
-                      height: 45,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF7FB896),
-                        borderRadius: BorderRadius.circular(25),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: '',
-                          hintStyle: TextStyle(color: Colors.white70),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          suffixIcon: Icon(
-                            Icons.search,
-                            color: Colors.white,
-                            size: 28,
-                          ),
+                    child: Center(
+                      child: Text(
+                        'HOT Reminder',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.pacifico(
+                          fontSize: 30, 
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                          color: const Color(0xFF2D5F3F),
                         ),
                       ),
                     ),
@@ -1086,25 +1101,45 @@ class _HomeScreenState extends State<Home> {
                   const SizedBox(width: 12),
                   GestureDetector(
                     onTap: _showNotifications,
-                    child: Container(
-                      width: 45,
-                      height: 45,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2D5F3F),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 45,
+                          height: 45,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2D5F3F),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.notifications,
-                        color: Colors.white,
-                        size: 24,
-                      ),
+                          child: const Icon(
+                            Icons.notifications,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        // Chỉ hiển thị chấm đỏ nếu có thông báo
+                        if (_hasNotifications())
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -1230,11 +1265,11 @@ class _HomeScreenState extends State<Home> {
                             itemBuilder: (context, index) {
                               final reminder = _filteredReminders[index];
                               
-                              // ✅ Kiểm tra xem item này có được chọn không
+                              // Kiểm tra xem item này có được chọn không
                               final isSelected = _selectedIds.contains(reminder.id);
                               
                               return GestureDetector(
-                                // ✅ onTap: Xử lý click
+                                // onTap: Xử lý click
                                 onTap: () {
                                   if (_isSelectionMode) {
                                     // Trong selection mode: toggle selection
@@ -1254,7 +1289,7 @@ class _HomeScreenState extends State<Home> {
                                   }
                                 },
                                 
-                                // ✅ onLongPress: Bắt đầu selection mode
+                                // onLongPress: Bắt đầu selection mode
                                 onLongPress: () {
                                   setState(() {
                                     _isSelectionMode = true;
@@ -1269,12 +1304,12 @@ class _HomeScreenState extends State<Home> {
                                     vertical: 15,
                                   ),
                                   decoration: BoxDecoration(
-                                    // ✅ Đổi màu khi được chọn
+                                    // Đổi màu khi được chọn
                                     color: isSelected 
                                         ? const Color(0xFF5F9F7A).withOpacity(0.3)
                                         : const Color(0xFFB8E6C9),
                                     borderRadius: BorderRadius.circular(25),
-                                    // ✅ Thêm border khi được chọn
+                                    // Thêm border khi được chọn
                                     border: isSelected
                                         ? Border.all(
                                             color: const Color(0xFF5F9F7A),
@@ -1291,7 +1326,7 @@ class _HomeScreenState extends State<Home> {
                                   ),
                                   child: Row(
                                     children: [
-                                      // ✅ Hiển thị checkbox khi ở selection mode
+                                      // Hiển thị checkbox khi ở selection mode
                                       if (_isSelectionMode)
                                         Container(
                                           margin: const EdgeInsets.only(right: 15),
@@ -1347,7 +1382,7 @@ class _HomeScreenState extends State<Home> {
                                         ),
                                       ),
                                       
-                                      // ✅ Ẩn toggle button khi ở selection mode
+                                      // Ẩn toggle button khi ở selection mode
                                       if (!_isSelectionMode)
                                         GestureDetector(
                                           onTap: () => _toggleReminderEnabled(reminder),
