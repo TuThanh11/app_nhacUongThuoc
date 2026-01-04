@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../models/medicine.dart';
 
 class MedicineEdit extends StatefulWidget {
@@ -25,7 +26,6 @@ class _MedicineEditState extends State<MedicineEdit> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // Chỉ load dữ liệu một lần
     if (!_isInitialized) {
       final medicine = ModalRoute.of(context)?.settings.arguments as Medicine?;
       
@@ -103,7 +103,6 @@ class _MedicineEditState extends State<MedicineEdit> {
   }
 
   Future<void> _saveChanges() async {
-    // Validate
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -124,7 +123,6 @@ class _MedicineEditState extends State<MedicineEdit> {
       return;
     }
 
-    // Check expiry date
     if (_expiryDate.isBefore(_startDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -140,7 +138,6 @@ class _MedicineEditState extends State<MedicineEdit> {
     });
 
     try {
-      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
       if (userId == null) {
         throw Exception('Chưa đăng nhập');
@@ -154,7 +151,6 @@ class _MedicineEditState extends State<MedicineEdit> {
       print('Using Firebase UID: $userId');
       print('Medicine ID: ${_medicine!.id}');
 
-      // Gọi API để update medicine
       final result = await ApiService.instance.updateMedicine(
         userId: userId,
         id: _medicine!.id.toString(),
@@ -171,10 +167,29 @@ class _MedicineEditState extends State<MedicineEdit> {
 
       if (!mounted) return;
 
-      // Kiểm tra kết quả
       if (result['success']) {
-        // Show success and go back
-        Navigator.pop(context, true); // Return true to indicate success
+        // ✅ Reschedule expiry notifications với thông tin mới
+        try {
+          final updatedMedicine = _medicine!.copyWith(
+            name: _nameController.text.trim(),
+            description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
+            usage: _usageController.text.trim().isEmpty ? null : _usageController.text.trim(),
+            startDate: _startDate,
+            expiryDate: _expiryDate,
+          );
+          
+          // Cancel old notifications
+          await NotificationService().cancelMedicineExpiryNotifications(_medicine!.id!);
+          
+          // Schedule new notifications
+          await NotificationService().scheduleMedicineExpiryNotification(updatedMedicine);
+          
+          print('✅ Rescheduled expiry notifications for updated medicine');
+        } catch (e) {
+          print('Error rescheduling expiry notifications: $e');
+        }
+        
+        Navigator.pop(context, true);
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -228,7 +243,6 @@ class _MedicineEditState extends State<MedicineEdit> {
 
     if (confirm == true && _medicine?.id != null) {
       try {
-        // Lấy Firebase UID
         final userId = await ApiService.instance.getUserId();
         if (userId == null) {
           throw Exception('Chưa đăng nhập');
@@ -238,7 +252,9 @@ class _MedicineEditState extends State<MedicineEdit> {
         print('Using Firebase UID: $userId');
         print('Medicine ID: ${_medicine!.id}');
 
-        // Gọi API để delete medicine
+        // ✅ Cancel expiry notifications trước khi xóa
+        await NotificationService().cancelMedicineExpiryNotifications(_medicine!.id!);
+
         final result = await ApiService.instance.deleteMedicine(
           userId,
           _medicine!.id.toString(),
@@ -246,7 +262,6 @@ class _MedicineEditState extends State<MedicineEdit> {
         
         if (!mounted) return;
 
-        // Kiểm tra kết quả
         if (result['success']) {
           Navigator.pop(context, true);
           
@@ -319,7 +334,6 @@ class _MedicineEditState extends State<MedicineEdit> {
                       ),
                     ),
                   ),
-                  // Delete button
                   Container(
                     width: 50,
                     height: 50,
@@ -356,7 +370,6 @@ class _MedicineEditState extends State<MedicineEdit> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Tên thuốc
                     const Text(
                       'Tên thuốc',
                       style: TextStyle(
@@ -373,7 +386,6 @@ class _MedicineEditState extends State<MedicineEdit> {
 
                     const SizedBox(height: 25),
 
-                    // Mô tả
                     const Text(
                       'Mô Tả',
                       style: TextStyle(
@@ -390,7 +402,6 @@ class _MedicineEditState extends State<MedicineEdit> {
 
                     const SizedBox(height: 25),
 
-                    // Công dụng
                     const Text(
                       'Công dụng',
                       style: TextStyle(
@@ -407,7 +418,6 @@ class _MedicineEditState extends State<MedicineEdit> {
 
                     const SizedBox(height: 25),
 
-                    // Ngày bắt đầu
                     GestureDetector(
                       onTap: () => _selectStartDate(context),
                       child: Container(
@@ -458,7 +468,6 @@ class _MedicineEditState extends State<MedicineEdit> {
 
                     const SizedBox(height: 20),
 
-                    // HSD
                     GestureDetector(
                       onTap: () => _selectExpiryDate(context),
                       child: Container(

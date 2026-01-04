@@ -26,7 +26,6 @@ class _LoginScreenState extends State<Login> {
     super.dispose();
   }
 
-  // Validate email
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) {
       return 'Vui lòng nhập email';
@@ -38,7 +37,6 @@ class _LoginScreenState extends State<Login> {
     return null;
   }
 
-  // Validate password
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) {
       return 'Vui lòng nhập mật khẩu';
@@ -97,11 +95,45 @@ class _LoginScreenState extends State<Login> {
       return;
     }
 
-    // Chưa có API reset password, hiển thị thông báo
+    // Validate email format
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email không hợp lệ'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        );
+      },
+    );
+
+    // Call API
+    final result = await ApiService.instance.forgotPassword(email: email);
+
+    if (!mounted) return;
+
+    // Close loading dialog
+    Navigator.of(context).pop();
+
+    // Show result
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Chức năng này chưa được triển khai'),
-        backgroundColor: Colors.orange,
+      SnackBar(
+        content: Text(result['message']),
+        backgroundColor: result['success'] ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -290,17 +322,17 @@ class _LoginScreenState extends State<Login> {
                       const SizedBox(height: 15),
 
                       // Quên mật khẩu
-                      // TextButton(
-                      //   onPressed: _handleForgotPassword,
-                      //   child: const Text(
-                      //     'Quên mật khẩu?',
-                      //     style: TextStyle(
-                      //       fontSize: 16,
-                      //       color: Color(0xFF2D5F3F),
-                      //     ),
-                      //   ),
-                      // ),
-                      // const SizedBox(height: 20),
+                      TextButton(
+                        onPressed: _handleForgotPassword,
+                        child: const Text(
+                          'Quên mật khẩu?',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF2D5F3F),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
 
                       // Đăng nhập button
                       _isLoading
@@ -319,7 +351,7 @@ class _LoginScreenState extends State<Login> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30),
                               ),
-                              side: const BorderSide( // 👈 THÊM VIỀN
+                              side: const BorderSide(
                                 color: Color(0xFF5F9F7A),
                                 width: 2,
                               ),

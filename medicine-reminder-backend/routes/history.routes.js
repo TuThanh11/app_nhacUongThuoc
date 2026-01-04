@@ -19,25 +19,32 @@ router.get('/:userId', async (req, res) => {
 
     const numericUserId = await getNumericUserId(userId);
 
-    let query = db.collection('medicine_history')
-      .where('user_id', '==', numericUserId);
+    // ✅ SIMPLE QUERY - Không cần index
+    const snapshot = await db.collection('medicine_history')
+      .where('user_id', '==', numericUserId)
+      .get();
 
-    // Nếu có filter theo ngày
-    if (startDate) {
-      query = query.where('timestamp', '>=', startDate);
-    }
-    if (endDate) {
-      query = query.where('timestamp', '<=', endDate);
-    }
-
-    const snapshot = await query.orderBy('timestamp', 'desc').get();
-
-    const history = [];
+    let history = [];
     snapshot.forEach(doc => {
       history.push({
         id: doc.id,
         ...doc.data()
       });
+    });
+
+    // ✅ Filter và sort trong JavaScript
+    if (startDate) {
+      history = history.filter(item => item.timestamp >= startDate);
+    }
+    if (endDate) {
+      history = history.filter(item => item.timestamp <= endDate);
+    }
+
+    // Sort theo timestamp giảm dần
+    history.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeB - timeA; // Descending
     });
 
     res.json({
@@ -111,19 +118,20 @@ router.get('/:userId/stats', async (req, res) => {
     const { userId } = req.params;
     const { startDate, endDate } = req.query;
 
+    console.log('=== STATS REQUEST ===');
+    console.log('User ID:', userId);
+    console.log('Start date:', startDate);
+    console.log('End date:', endDate);
+
     const numericUserId = await getNumericUserId(userId);
 
-    let query = db.collection('medicine_history')
-      .where('user_id', '==', numericUserId);
+    // ✅ SIMPLE QUERY - Không cần index phức tạp
+    // Chỉ query theo user_id, filter date trong code
+    const snapshot = await db.collection('medicine_history')
+      .where('user_id', '==', numericUserId)
+      .get();
 
-    if (startDate) {
-      query = query.where('timestamp', '>=', startDate);
-    }
-    if (endDate) {
-      query = query.where('timestamp', '<=', endDate);
-    }
-
-    const snapshot = await query.get();
+    console.log('Total documents:', snapshot.size);
 
     let taken = 0;
     let rejected = 0;
@@ -131,6 +139,17 @@ router.get('/:userId/stats', async (req, res) => {
 
     snapshot.forEach(doc => {
       const data = doc.data();
+      const itemTimestamp = data.timestamp;
+
+      // ✅ Filter theo date trong JavaScript
+      if (startDate && itemTimestamp < startDate) {
+        return; // Skip document này
+      }
+      if (endDate && itemTimestamp > endDate) {
+        return; // Skip document này
+      }
+      
+      // Đếm theo status
       if (data.status === 'taken') taken++;
       else if (data.status === 'rejected') rejected++;
       else if (data.status === 'missed') missed++;
@@ -138,6 +157,8 @@ router.get('/:userId/stats', async (req, res) => {
 
     const total = taken + rejected + missed;
     const adherenceRate = total > 0 ? ((taken / total) * 100).toFixed(1) : 0;
+
+    console.log('Stats result:', { total, taken, rejected, missed, adherenceRate });
 
     res.json({
       success: true,

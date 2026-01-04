@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../widgets/custom_text_field.dart';
 import '../services/api_service.dart';
 
 
@@ -14,7 +13,11 @@ class _ChangePasswordState extends State<ChangePassword> {
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  
   bool _isLoading = false;
+  bool _obscureOldPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -83,6 +86,61 @@ class _ChangePasswordState extends State<ChangePassword> {
         backgroundColor: isError ? Colors.red : const Color(0xFF5F9F7A),
         duration: const Duration(seconds: 3),
       ),
+    );
+  }
+
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required bool obscureText,
+    required VoidCallback onToggleVisibility,
+    required String label,
+    required String hintText,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF5F9F7A),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextFormField(
+          controller: controller,
+          obscureText: obscureText,
+          style: const TextStyle(
+            fontSize: 16,
+            color: Color(0xFF2D5F3F),
+          ),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: const Color(0xFFB8E6C9),
+            hintText: hintText,
+            hintStyle: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 14,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 16,
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                obscureText ? Icons.visibility_off : Icons.visibility,
+                color: const Color(0xFF5F9F7A),
+              ),
+              onPressed: onToggleVisibility,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -172,54 +230,45 @@ class _ChangePasswordState extends State<ChangePassword> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Mật khẩu cũ
-                        const Text(
-                          'Mật khẩu cũ',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF5F9F7A),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        CustomTextField(
+                        _buildPasswordField(
                           controller: _oldPasswordController,
-                          obscureText: true,
+                          obscureText: _obscureOldPassword,
+                          onToggleVisibility: () {
+                            setState(() {
+                              _obscureOldPassword = !_obscureOldPassword;
+                            });
+                          },
+                          label: 'Mật khẩu cũ',
                           hintText: 'Nhập mật khẩu hiện tại',
                         ),
 
                         const SizedBox(height: 25),
 
                         // Mật khẩu mới
-                        const Text(
-                          'Mật khẩu mới',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF5F9F7A),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        CustomTextField(
+                        _buildPasswordField(
                           controller: _newPasswordController,
-                          obscureText: true,
+                          obscureText: _obscureNewPassword,
+                          onToggleVisibility: () {
+                            setState(() {
+                              _obscureNewPassword = !_obscureNewPassword;
+                            });
+                          },
+                          label: 'Mật khẩu mới',
                           hintText: 'Nhập mật khẩu mới (tối thiểu 6 ký tự)',
                         ),
 
                         const SizedBox(height: 25),
 
                         // Nhập lại mật khẩu mới
-                        const Text(
-                          'Nhập lại mật khẩu mới',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF5F9F7A),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        CustomTextField(
+                        _buildPasswordField(
                           controller: _confirmPasswordController,
-                          obscureText: true,
+                          obscureText: _obscureConfirmPassword,
+                          onToggleVisibility: () {
+                            setState(() {
+                              _obscureConfirmPassword = !_obscureConfirmPassword;
+                            });
+                          },
+                          label: 'Nhập lại mật khẩu mới',
                           hintText: 'Xác nhận mật khẩu mới',
                         ),
 

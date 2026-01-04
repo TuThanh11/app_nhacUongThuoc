@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../models/medicine.dart';
 
 class AddMedicine extends StatefulWidget {
@@ -136,6 +137,17 @@ class _AddMedicineState extends State<AddMedicine> {
 
       // Kiểm tra kết quả
       if (result['success']) {
+        // ✅ Schedule expiry notifications
+        if (result['medicine'] != null) {
+          try {
+            final medicine = Medicine.fromMap(result['medicine']);
+            await NotificationService().scheduleMedicineExpiryNotification(medicine);
+            print('✅ Scheduled expiry notifications for new medicine');
+          } catch (e) {
+            print('Error scheduling expiry notifications: $e');
+          }
+        }
+        
         // Trả về true để báo hiệu thêm thành công
         Navigator.pop(context, true);
         

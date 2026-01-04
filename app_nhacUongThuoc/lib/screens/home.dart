@@ -29,14 +29,16 @@ class _HomeScreenState extends State<Home> {
   final _searchController = TextEditingController();
 
   String? _avatarUrl;
+  bool _hasCriticalMedicines = false;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = 2;
-    _loadReminders().then((_) {
-      _checkMedicineExpiry(); // Tự động check khi vào app
-    });
+    // _loadReminders().then((_) {
+    //   _checkMedicineExpiry(); // Tự động check khi vào app
+    // });
+    _loadReminders();
     _loadUserAvatar();
   }
 
@@ -163,34 +165,37 @@ class _HomeScreenState extends State<Home> {
     });
 
     try {
-      // Lấy Firebase UID từ ApiService
       final userId = await ApiService.instance.getUserId();
-      
-      if (userId == null) {
-        throw Exception('Chưa đăng nhập');
-      }
+      if (userId == null) throw Exception('Chưa đăng nhập');
 
-      print('=== LOAD REMINDERS DEBUG ===');
-      print('Using Firebase UID: $userId');
-      
-      // Gọi API để lấy reminders với Firebase UID
+      // Load reminders
       final remindersData = await ApiService.instance.getReminders(userId);
-      
-      print('Loaded ${remindersData.length} reminders from API');
-      
-      // Convert từ dynamic sang Reminder objects
       final reminders = remindersData.map((data) {
         return model.Reminder.fromMap(data);
       }).toList();
       
-      // Filter reminders for selected date
       final filteredByDate = reminders.where((reminder) {
         return reminder.isActiveOnDate(_selectedDate);
       }).toList();
 
+      // Check thuốc sắp hết hạn
+      final medicinesData = await ApiService.instance.getMedicines(userId);
+      bool hasCritical = false;
+      
+      for (var m in medicinesData) {
+        final expiryDate = DateTime.parse(m['expiry_date']);
+        final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+        
+        if (daysLeft >= 0 && daysLeft <= 30) {
+          hasCritical = true;
+          break;
+        }
+      }
+
       setState(() {
         _reminders = reminders;
         _filteredReminders = filteredByDate;
+        _hasCriticalMedicines = hasCritical; 
         _isLoading = false;
       });
     } catch (e) {
@@ -224,24 +229,24 @@ class _HomeScreenState extends State<Home> {
     }
   }
 
-  Future<void> _checkMedicineExpiry() async {
-    final userId = await ApiService.instance.getUserId();
-    if (userId == null) return;
+  // Future<void> _checkMedicineExpiry() async {
+  //   final userId = await ApiService.instance.getUserId();
+  //   if (userId == null) return;
 
-    final medicines = await ApiService.instance.getMedicines(userId);
-    for (var m in medicines) {
-      final expiryDate = DateTime.parse(m['expiryDate']);
-      final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+  //   final medicines = await ApiService.instance.getMedicines(userId);
+  //   for (var m in medicines) {
+  //     final expiryDate = DateTime.parse(m['expiryDate']);
+  //     final daysLeft = expiryDate.difference(DateTime.now()).inDays;
 
-      // Nếu còn đúng 7 ngày hoặc 3 ngày thì báo
-      if (daysLeft == 7 || daysLeft == 3 || daysLeft == 0) {
-        await NotificationService().showExpiryWarning(
-          m['name'], 
-          expiryDate
-        );
-      }
-    }
-  }
+  //     // Nếu còn đúng 7 ngày hoặc 3 ngày thì báo
+  //     if (daysLeft == 7 || daysLeft == 3 || daysLeft == 0) {
+  //       await NotificationService().showExpiryWarning(
+  //         m['name'], 
+  //         expiryDate
+  //       );
+  //     }
+  //   }
+  // }
 
   void _filterRemindersByDate() {
     setState(() {
@@ -310,19 +315,20 @@ class _HomeScreenState extends State<Home> {
     final now = DateTime.now();
     final currentTime = now.hour * 60 + now.minute;
 
+    // Kiểm tra nhắc nhở uống thuốc
     for (var reminder in _filteredReminders) {
       for (var time in reminder.times) {
         final timeParts = time.split(':');
         final reminderMinutes = int.parse(timeParts[0]) * 60 + int.parse(timeParts[1]);
         final difference = reminderMinutes - currentTime;
 
-        // Chấm đỏ chỉ hiện khi có thuốc sắp uống trong 60 phút tới
         if (difference > 0 && difference <= 60) {
           return true;
         }
       }
     }
-    return false;
+    
+    return _hasCriticalMedicines;
   }
   void _toggleSelectionMode() {
     setState(() {
@@ -604,8 +610,8 @@ class _HomeScreenState extends State<Home> {
     final currentTime = now.hour * 60 + now.minute;
 
     List<Map<String, dynamic>> upcoming = [];
-    List<Map<String, dynamic>> overdue = [];
 
+    // Thêm nhắc nhở uống thuốc
     for (var reminder in _filteredReminders) {
       for (var time in reminder.times) {
         final timeParts = time.split(':');
@@ -616,26 +622,61 @@ class _HomeScreenState extends State<Home> {
           upcoming.add({
             'name': 'Uống thuốc: ${reminder.medicineName}',
             'time': TimeFormatHelper.format24To12Hour(time),
-            'type': 'medicine'
+            'type': 'medicine',
+            'color': const Color(0xFF5F9F7A),
+            'priority': 1, // Medicine reminders có priority cao
           });
         }
       }
     }
 
+    //Kiểm tra thuốc sắp hết hạn
     try {
       final userId = await ApiService.instance.getUserId();
       if (userId != null) {
-        // Gọi API lấy danh sách thuốc (hoặc dùng list thuốc đã load ở MedicineHome)
         final medicinesData = await ApiService.instance.getMedicines(userId);
         for (var m in medicinesData) {
-          final expiryDate = DateTime.parse(m['expiryDate']);
+          final expiryDate = DateTime.parse(m['expiry_date']);
           final daysLeft = expiryDate.difference(now).inDays;
 
-          if (daysLeft >= 0 && daysLeft <= 7) {
+          // Hiển thị thuốc sắp hết hạn trong vòng 30 ngày
+          if (daysLeft >= 0 && daysLeft <= 30) {
+            String timeText;
+            Color notifColor;
+            int priority;
+            
+            if (daysLeft == 0) {
+              timeText = "Hết hạn hôm nay!";
+              notifColor = Colors.red.shade800;
+              priority = 0; // Highest priority
+            } else if (daysLeft == 1) {
+              timeText = "Hết hạn ngày mai!";
+              notifColor = Colors.red.shade700;
+              priority = 0;
+            } else if (daysLeft <= 3) {
+              timeText = "Còn $daysLeft ngày";
+              notifColor = Colors.red.shade600;
+              priority = 0;
+            } else if (daysLeft <= 7) {
+              timeText = "Còn $daysLeft ngày";
+              notifColor = Colors.orange.shade700;
+              priority = 1;
+            } else if (daysLeft <= 14) {
+              timeText = "Còn $daysLeft ngày";
+              notifColor = Colors.orange.shade600;
+              priority = 2;
+            } else {
+              timeText = "Còn $daysLeft ngày";
+              notifColor = Colors.amber.shade700;
+              priority = 3;
+            }
+            
             upcoming.add({
               'name': 'Hết hạn: ${m['name']}',
-              'time': '${daysLeft == 0 ? "Hôm nay" : "Còn $daysLeft ngày"}',
-              'type': 'expiry'
+              'time': timeText,
+              'type': 'expiry',
+              'color': notifColor,
+              'priority': priority,
             });
           }
         }
@@ -644,8 +685,11 @@ class _HomeScreenState extends State<Home> {
       print('Lỗi lấy hạn sử dụng: $e');
     }
 
+    upcoming.sort((a, b) => a['priority'].compareTo(b['priority']));
+
     if (!mounted) return;
 
+    // Hiển thị dialog với danh sách thông báo
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -656,82 +700,127 @@ class _HomeScreenState extends State<Home> {
           ),
           child: Container(
             padding: const EdgeInsets.all(20),
-            constraints: const BoxConstraints(maxHeight: 500),
+            constraints: const BoxConstraints(maxHeight: 600, maxWidth: 400),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Thông báo',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2D5F3F),
-                  ),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.notifications_active,
+                      color: Color(0xFF2D5F3F),
+                      size: 28,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Thông báo',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2D5F3F),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
                 Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (upcoming.isNotEmpty) ...[
-                          Row(
+                  child: upcoming.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(30),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.notifications_off,
+                                  size: 60,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 15),
+                                Text(
+                                  'Không có nhắc nhở sắp tới',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF5F9F7A),
-                                  shape: BoxShape.circle,
+                              // Urgent notifications (expiry ≤ 3 days)
+                              if (upcoming.any((n) => n['priority'] == 0)) ...[
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.shade700,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Khẩn cấp',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.red.shade700,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Sắp diễn ra',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF5F9F7A),
+                                const SizedBox(height: 10),
+                                ...upcoming
+                                    .where((n) => n['priority'] == 0)
+                                    .map((notif) => _buildNotificationItem(
+                                          notif['name']!,
+                                          notif['time']!,
+                                          notif['color'],
+                                        )),
+                                const SizedBox(height: 15),
+                              ],
+                              
+                              // Regular notifications
+                              if (upcoming.any((n) => n['priority'] > 0)) ...[
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF5F9F7A),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Sắp diễn ra',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF5F9F7A),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
+                                const SizedBox(height: 10),
+                                ...upcoming
+                                    .where((n) => n['priority'] > 0)
+                                    .map((notif) => _buildNotificationItem(
+                                          notif['name']!,
+                                          notif['time']!,
+                                          notif['color'],
+                                        )),
+                              ],
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          ...upcoming.map(
-                            (notif) => _buildNotificationItem(
-                              notif['name']!,
-                              notif['time']!,
-                              notif['type'] == 'expiry' ? Colors.orange : const Color(0xFF5F9F7A),
-                              
-                            ),
-                          ),
-                        ] else
-                          // Hiển thị trạng thái trống khi không có thông báo "Sắp diễn ra"
-                          Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(30),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.notifications_off,
-                                    size: 60,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  const SizedBox(height: 15),
-                                  Text(
-                                    'Không có nhắc nhở sắp tới',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+                        ),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
@@ -771,20 +860,27 @@ class _HomeScreenState extends State<Home> {
       ),
       child: Row(
         children: [
+          Icon(
+            name.contains('Hết hạn') ? Icons.warning_amber_rounded : Icons.medication,
+            color: color,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               name,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: color,
               ),
             ),
           ),
+          const SizedBox(width: 10),
           Text(
             time,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: FontWeight.bold,
               color: color,
             ),

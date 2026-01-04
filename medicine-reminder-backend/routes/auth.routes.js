@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const { auth, db } = require('../server');
 const axios = require('axios');
+const { generateRandomPassword, sendNewPasswordEmail } = require('../services/email.service');
 
-// Firebase Web API Key - LẤY TỪ Firebase Console
-const FIREBASE_API_KEY = "AIzaSyDsNyUZZujExEI5r3HosP61VB9QVlCaA5o"; // Thay bằng API key thật từ Firebase Console
+// Firebase Web API Key
+const FIREBASE_API_KEY = "AIzaSyDsNyUZZujExEI5r3HosP61VB9QVlCaA5o";
 
 // Helper to generate numeric user_id
 function generateNumericUserId(uid) {
@@ -39,7 +40,6 @@ router.post('/signup', async (req, res) => {
       });
     }
 
-    // Create user in Firebase Auth
     const userRecord = await auth.createUser({
       email: email,
       password: password,
@@ -50,7 +50,6 @@ router.post('/signup', async (req, res) => {
 
     const numericUserId = generateNumericUserId(userRecord.uid);
 
-    // Create user document in Firestore
     await db.collection('users').doc(userRecord.uid).set({
       username: username,
       email: email,
@@ -104,7 +103,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Sử dụng Firebase REST API để xác thực password
     const firebaseAuthUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`;
     
     let firebaseResponse;
@@ -138,12 +136,10 @@ router.post('/login', async (req, res) => {
     const uid = firebaseResponse.data.localId;
     console.log('Login successful for uid:', uid);
 
-    // Get user info from Firestore
     const userDoc = await db.collection('users').doc(uid).get();
     
     if (!userDoc.exists) {
       console.log('User document not found, creating...');
-      // Tạo document nếu chưa có
       const numericUserId = generateNumericUserId(uid);
       const userData = {
         username: firebaseResponse.data.displayName || email.split('@')[0],
@@ -183,6 +179,72 @@ router.post('/login', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Đã xảy ra lỗi khi đăng nhập',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/auth/forgot-password - Quên mật khẩu
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    console.log('Forgot password request:', { email });
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập email'
+      });
+    }
+
+    // Kiểm tra email có tồn tại không
+    let userRecord;
+    try {
+      userRecord = await auth.getUserByEmail(email);
+    } catch (error) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tài khoản với email này'
+      });
+    }
+
+    // Lấy thông tin user từ Firestore
+    const userDoc = await db.collection('users').doc(userRecord.uid).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
+
+    // Generate mật khẩu mới
+    const newPassword = generateRandomPassword(8);
+
+    // Cập nhật mật khẩu trong Firebase Auth
+    await auth.updateUser(userRecord.uid, {
+      password: newPassword
+    });
+
+    // Gửi email
+    const emailResult = await sendNewPasswordEmail(
+      email, 
+      newPassword, 
+      userData.username || email.split('@')[0]
+    );
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Đã tạo mật khẩu mới nhưng không thể gửi email. Vui lòng liên hệ quản trị viên.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Mật khẩu mới đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư!'
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Đã xảy ra lỗi khi khôi phục mật khẩu',
       error: error.message
     });
   }

@@ -632,4 +632,39 @@ class ApiService {
       return {'success': false, 'message': 'Lỗi: $e'};
     }
   }
+
+  Future<Map<String, dynamic>> forgotPassword({
+    required String email,
+  }) async {
+    try {
+      print('=== FORGOT PASSWORD REQUEST ===');
+      print('URL: $baseUrl/auth/forgot-password');
+      print('Email: $email');
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/forgot-password'),
+            headers: _getHeaders(),
+            body: json.encode({
+              'email': email,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse(response);
+    } on http.ClientException catch (e) {
+      print('Network error: $e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.',
+      };
+    } catch (e) {
+      print('Forgot password error: $e');
+      return {
+        'success': false,
+        'message': 'Lỗi kết nối: $e',
+      };
+    }
+  }
+  
 }

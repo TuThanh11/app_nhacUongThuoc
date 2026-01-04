@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../models/medicine.dart';
 
 class MedicineHome extends StatefulWidget {
@@ -53,6 +54,9 @@ class _MedicineHomeState extends State<MedicineHome> {
         return Medicine.fromMap(data);
       }).toList();
       
+      // ✅ Schedule expiry notifications for all medicines
+      await NotificationService().scheduleAllMedicineExpiryNotifications(medicines);
+      
       if (mounted) {
         setState(() {
           _medicines = medicines;
@@ -89,6 +93,60 @@ class _MedicineHomeState extends State<MedicineHome> {
             .toList();
       }
     });
+  }
+
+  Color _getExpiryColor(DateTime expiryDate) {
+    final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+    
+    if (daysLeft < 0) {
+      return Colors.red.shade800; // Đã hết hạn
+    } else if (daysLeft == 0) {
+      return Colors.red.shade700; // Hết hạn hôm nay
+    } else if (daysLeft <= 3) {
+      return Colors.red.shade600; // 1-3 ngày
+    } else if (daysLeft <= 7) {
+      return Colors.orange.shade700; // 4-7 ngày
+    } else if (daysLeft <= 14) {
+      return Colors.orange.shade600; // 8-14 ngày
+    } else if (daysLeft <= 30) {
+      return Colors.amber.shade700; // 15-30 ngày
+    } else {
+      return const Color(0xFF5F9F7A); // >30 ngày - màu bình thường
+    }
+  }
+
+  String _getExpiryText(DateTime expiryDate) {
+    final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+    
+    if (daysLeft < 0) {
+      return "Đã hết hạn ${-daysLeft} ngày";
+    } else if (daysLeft == 0) {
+      return "Hết hạn hôm nay!";
+    } else if (daysLeft == 1) {
+      return "Hết hạn ngày mai!";
+    } else if (daysLeft <= 7) {
+      return "Còn $daysLeft ngày";
+    } else if (daysLeft <= 30) {
+      return "Còn $daysLeft ngày";
+    } else {
+      return "HSD: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}";
+    }
+  }
+
+  IconData _getExpiryIcon(DateTime expiryDate) {
+    final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+    
+    if (daysLeft <= 0) {
+      return Icons.dangerous;
+    } else if (daysLeft <= 3) {
+      return Icons.warning_amber_rounded;
+    } else if (daysLeft <= 7) {
+      return Icons.error_outline;
+    } else if (daysLeft <= 30) {
+      return Icons.schedule;
+    } else {
+      return Icons.check_circle_outline;
+    }
   }
 
   @override
@@ -221,8 +279,10 @@ class _MedicineHomeState extends State<MedicineHome> {
                             itemCount: _filteredMedicines.length,
                             itemBuilder: (context, index) {
                               final medicine = _filteredMedicines[index];
-                              final DateTime expiryDate = DateTime.tryParse(medicine.expiryDate.toString()) ?? DateTime.now();
-                              final bool isExpiringSoon = medicine.expiryDate.difference(DateTime.now()).inDays <= 7;
+                              final expiryColor = _getExpiryColor(medicine.expiryDate);
+                              final expiryText = _getExpiryText(medicine.expiryDate);
+                              final expiryIcon = _getExpiryIcon(medicine.expiryDate);
+                              
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 15),
                                 child: Row(
@@ -243,41 +303,64 @@ class _MedicineHomeState extends State<MedicineHome> {
                                           }
                                         },
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 24,
-                                            vertical: 16,
-                                          ),
+                                          padding: const EdgeInsets.all(16),
                                           decoration: BoxDecoration(
-                                            color: isExpiringSoon ? Colors.orange.shade700 : const Color(0xFF5F9F7A),
-                                            borderRadius:
-                                                BorderRadius.circular(30),
+                                            color: expiryColor,
+                                            borderRadius: BorderRadius.circular(20),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: Colors.black
-                                                    .withOpacity(0.2),
+                                                color: Colors.black.withOpacity(0.2),
                                                 blurRadius: 6,
                                                 offset: const Offset(0, 3),
                                               ),
                                             ],
                                           ),
-                                          child: ListTile(
-                                            title: Text(
-                                              medicine.name,
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold, 
-                                                color: Colors.white
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      medicine.name,
+                                                      style: const TextStyle(
+                                                        fontSize: 20,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      expiryText,
+                                                      style: const TextStyle(
+                                                        fontSize: 14,
+                                                        color: Colors.white70,
+                                                        fontWeight: FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                    if (medicine.description != null && 
+                                                        medicine.description!.isNotEmpty) ...[
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        medicine.description!,
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.white60,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                            subtitle: Text(
-                                              isExpiringSoon 
-                                                ? "Hết hạn vào: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}" 
-                                                : (medicine.description ?? ""),
-                                              style: const TextStyle(color: Colors.white70),
-                                            ),
-                                            trailing: isExpiringSoon 
-                                              ? const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 30) 
-                                              : null,
+                                              const SizedBox(width: 12),
+                                              Icon(
+                                                expiryIcon,
+                                                color: Colors.white,
+                                                size: 32,
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
@@ -309,8 +392,7 @@ class _MedicineHomeState extends State<MedicineHome> {
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color:
-                                                  Colors.black.withOpacity(0.1),
+                                              color: Colors.black.withOpacity(0.1),
                                               blurRadius: 4,
                                               offset: const Offset(0, 2),
                                             ),

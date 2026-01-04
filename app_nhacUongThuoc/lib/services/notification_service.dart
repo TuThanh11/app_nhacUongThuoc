@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../models/reminder.dart';
+import '../models/medicine.dart';
 import '../main.dart';
 
 class NotificationService {
@@ -19,10 +20,13 @@ class NotificationService {
   static const String channelName = 'Medicine Reminders';
   static const String channelDescription = 'Notifications for medicine reminders';
 
-  // ✅ Không cần callback nữa vì dùng AlarmManagerService
+  static const String expiryChannelId = 'expiry_channel';
+  static const String expiryChannelName = 'Cảnh báo hết hạn';
+  static const String expiryChannelDescription = 'Thông báo khi thuốc sắp hết hạn';
 
   Future<void> initialize() async {
     tz.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
     
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
@@ -41,33 +45,41 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // Create notification channel for Android
+    // Create notification channels for Android
+    const AndroidNotificationChannel reminderChannel = AndroidNotificationChannel(
+      channelId,
+      channelName,
+      description: channelDescription,
+      importance: Importance.max,
+    );
+
     const AndroidNotificationChannel expiryChannel = AndroidNotificationChannel(
-      'expiry_channel', // id
-      'Cảnh báo hạn sử dụng', // title
-      description: 'Thông báo khi thuốc của bạn sắp hết hạn',
+      expiryChannelId,
+      expiryChannelName,
+      description: expiryChannelDescription,
       importance: Importance.high,
     );
 
-    await _notifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(expiryChannel);
+    final plugin = _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    
+    await plugin?.createNotificationChannel(reminderChannel);
+    await plugin?.createNotificationChannel(expiryChannel);
   }
 
   Future<void> _onNotificationTapped(NotificationResponse response) async {
-    // ✅ Backup: chỉ xử lý khi user tap vào notification
     final payload = response.payload;
     if (payload != null) {
       print('Notification tapped with payload: $payload');
-      // Có thể thêm xử lý nếu cần
     }
   }
 
-  // ✅ Helper method: Convert String ID to numeric hash
   int _getNumericId(String? stringId) {
     if (stringId == null) return 0;
     return stringId.hashCode.abs();
   }
+
+  // ==================== MEDICINE REMINDER NOTIFICATIONS ====================
 
   Future<void> scheduleReminder(Reminder reminder) async {
     if (!reminder.isEnabled) return;
@@ -107,8 +119,6 @@ class NotificationService {
     int index,
     int numericReminderId,
   ) async {
-    final now = DateTime.now();
-    
     List<int> daysToSchedule = [];
     
     if (reminder.repeatMode == 'Hằng ngày') {
@@ -128,7 +138,6 @@ class NotificationService {
         dayOfWeek,
       );
 
-      // ✅ Payload chứa thông tin để navigate
       final payload = '${reminder.id}|||${reminder.medicineName}|||${reminder.times[index]}';
 
       await _notifications.zonedSchedule(
@@ -143,20 +152,19 @@ class NotificationService {
             channelDescription: channelDescription,
             importance: Importance.max,
             priority: Priority.max,
-            fullScreenIntent: true, // ✅ Hiển thị full screen
+            fullScreenIntent: true,
             category: AndroidNotificationCategory.alarm,
             sound: const RawResourceAndroidNotificationSound('alarm'),
             playSound: true,
             enableVibration: true,
-            //vibrationPattern: Int64List.fromList([0, 1000, 500, 1000]),
-            autoCancel: false, // ✅ Không tự động đóng
+            autoCancel: false,
           ),
           iOS: const DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: true,
             presentSound: true,
             sound: 'alarm.mp3',
-            interruptionLevel: InterruptionLevel.critical, // ✅ iOS critical alert
+            interruptionLevel: InterruptionLevel.critical,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -284,7 +292,7 @@ class NotificationService {
       final snoozeId = _generateNotificationId(numericId, 999, 0);
       await _notifications.cancel(snoozeId);
       
-      print('✅ Successfully cancelled all notifications');
+      print('Successfully cancelled all notifications');
     } catch (e) {
       print('Error in cancelReminder: $e');
     }
@@ -314,25 +322,178 @@ class NotificationService {
     }
   }
 
+  // ==================== MEDICINE EXPIRY NOTIFICATIONS ====================
+
+  /// Schedule expiry notifications for a medicine
+  /// Notifies at: 30 days, 14 days, 7 days, 3 days, 1 day, and on expiry date
+  Future<void> scheduleMedicineExpiryNotification(Medicine medicine) async {
+    if (medicine.id == null) return;
+
+    final now = DateTime.now();
+    final expiryDate = medicine.expiryDate;
+    final daysUntilExpiry = expiryDate.difference(now).inDays;
+
+    // Cancel existing notifications for this medicine
+    await cancelMedicineExpiryNotifications(medicine.id!);
+
+    // Notification schedule: 30, 14, 7, 3, 1 days before and on expiry date
+    final notificationDays = [30, 14, 7, 3, 1, 0];
+
+    for (final daysBeforeExpiry in notificationDays) {
+      if (daysUntilExpiry >= daysBeforeExpiry) {
+        final notificationDate = expiryDate.subtract(Duration(days: daysBeforeExpiry));
+        
+        // Only schedule if notification date is in the future
+        if (notificationDate.isAfter(now)) {
+          await _scheduleExpiryNotification(
+            medicine,
+            notificationDate,
+            daysBeforeExpiry,
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _scheduleExpiryNotification(
+    Medicine medicine,
+    DateTime notificationDate,
+    int daysBeforeExpiry,
+  ) async {
+    // Schedule at 9:00 AM
+    final scheduledDateTime = DateTime(
+      notificationDate.year,
+      notificationDate.month,
+      notificationDate.day,
+      9,
+      0,
+    );
+
+    final notificationId = _generateExpiryNotificationId(
+      medicine.id!,
+      daysBeforeExpiry,
+    );
+
+    String title;
+    String body;
+    
+    if (daysBeforeExpiry == 0) {
+      title = 'Thuốc đã hết hạn!';
+      body = 'Thuốc "${medicine.name}" đã hết hạn hôm nay. Vui lòng kiểm tra và không sử dụng.';
+    } else if (daysBeforeExpiry == 1) {
+      title = 'Thuốc sắp hết hạn!';
+      body = 'Thuốc "${medicine.name}" sẽ hết hạn vào ngày mai (${_formatDate(medicine.expiryDate)}).';
+    } else if (daysBeforeExpiry <= 7) {
+      title = 'Cảnh báo hết hạn';
+      body = 'Thuốc "${medicine.name}" sẽ hết hạn trong $daysBeforeExpiry ngày nữa (${_formatDate(medicine.expiryDate)}).';
+    } else {
+      title = 'Nhắc nhở hạn sử dụng';
+      body = 'Thuốc "${medicine.name}" sẽ hết hạn trong $daysBeforeExpiry ngày (${_formatDate(medicine.expiryDate)}).';
+    }
+
+    await _notifications.zonedSchedule(
+      notificationId,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledDateTime, tz.local),
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          expiryChannelId,
+          expiryChannelName,
+          channelDescription: expiryChannelDescription,
+          importance: daysBeforeExpiry <= 3 ? Importance.max : Importance.high,
+          priority: daysBeforeExpiry <= 3 ? Priority.max : Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: daysBeforeExpiry == 0 ? Colors.red : Colors.orange,
+          playSound: true,
+          enableVibration: true,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          interruptionLevel: daysBeforeExpiry <= 3 
+              ? InterruptionLevel.critical 
+              : InterruptionLevel.active,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: 'expiry|||${medicine.id}|||${medicine.name}',
+    );
+
+    print('Scheduled expiry notification for "${medicine.name}" - $daysBeforeExpiry days before');
+  }
+
+  int _generateExpiryNotificationId(String medicineId, int daysBeforeExpiry) {
+    final baseId = medicineId.hashCode.abs();
+    return (baseId * 100) + daysBeforeExpiry;
+  }
+
+  Future<void> cancelMedicineExpiryNotifications(String medicineId) async {
+    final notificationDays = [30, 14, 7, 3, 1, 0];
+    
+    for (final days in notificationDays) {
+      final notificationId = _generateExpiryNotificationId(medicineId, days);
+      await _notifications.cancel(notificationId);
+    }
+    
+    print('Cancelled all expiry notifications for medicine: $medicineId');
+  }
+
+  /// Schedule expiry notifications for all medicines
+  Future<void> scheduleAllMedicineExpiryNotifications(List<Medicine> medicines) async {
+    print('📅 Scheduling expiry notifications for ${medicines.length} medicines');
+    
+    for (final medicine in medicines) {
+      await scheduleMedicineExpiryNotification(medicine);
+    }
+    
+    print('Completed scheduling all medicine expiry notifications');
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  /// Show immediate expiry warning (for testing or immediate alerts)
   Future<void> showExpiryWarning(String medicineName, DateTime expiryDate) async {
-    // Tính số ngày còn lại để đưa vào nội dung
     final daysLeft = expiryDate.difference(DateTime.now()).inDays;
     
+    String title;
+    String body;
+    
+    if (daysLeft < 0) {
+      title = 'Thuốc đã hết hạn!';
+      body = 'Thuốc "$medicineName" đã hết hạn. Vui lòng không sử dụng.';
+    } else if (daysLeft == 0) {
+      title = 'Thuốc hết hạn hôm nay!';
+      body = 'Thuốc "$medicineName" sẽ hết hạn vào hôm nay.';
+    } else if (daysLeft <= 3) {
+      title = 'Thuốc sắp hết hạn!';
+      body = 'Thuốc "$medicineName" sẽ hết hạn trong $daysLeft ngày (${_formatDate(expiryDate)}).';
+    } else {
+      title = 'Nhắc nhở hạn sử dụng';
+      body = 'Thuốc "$medicineName" sẽ hết hạn vào ${_formatDate(expiryDate)} (còn $daysLeft ngày).';
+    }
+
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'expiry_channel', // Quan trọng: ID kênh
-      'Cảnh báo hết hạn',
-      channelDescription: 'Thông báo khi thuốc sắp hết hạn',
+      expiryChannelId,
+      expiryChannelName,
+      channelDescription: expiryChannelDescription,
       importance: Importance.max,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher', // Đảm bảo icon này tồn tại
+      icon: '@mipmap/ic_launcher',
+      color: Colors.orange,
     );
 
     const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
-      medicineName.hashCode, // ID duy nhất cho mỗi loại thuốc
-      '⚠️ Thuốc sắp hết hạn!',
-      'Thuốc "$medicineName" sẽ hết hạn vào ngày ${expiryDate.day}/${expiryDate.month} (còn $daysLeft ngày).',
+      medicineName.hashCode,
+      title,
+      body,
       platformDetails,
     );
   }
